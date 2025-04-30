@@ -1,7 +1,7 @@
 // src/components/data-preview-table.tsx
 "use client";
 
-import type { DataEntry } from "@/services/database";
+import type { DataEntry, RelationshipEntry } from "@/services/database"; // Import RelationshipEntry
 import {
   Table,
   TableBody,
@@ -14,13 +14,14 @@ import {
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Eye, Edit } from "lucide-react"; // Added Edit icon
+import { Eye, Edit, Link2 } from "lucide-react"; // Added Link2 icon
 
 interface DataPreviewTableProps {
   data: DataEntry[]; // Changed prop name from initialData to data
+  relationships: RelationshipEntry[]; // Add relationships prop
 }
 
-export function DataPreviewTable({ data }: DataPreviewTableProps) { // Use the 'data' prop
+export function DataPreviewTable({ data, relationships }: DataPreviewTableProps) { // Use the 'data' and 'relationships' props
   // Determine table headers dynamically from the first data entry
   // Prioritize common keys if data structures vary, or use a union of keys
   const allKeys = data.reduce((keys, entry) => {
@@ -43,8 +44,16 @@ export function DataPreviewTable({ data }: DataPreviewTableProps) { // Use the '
       return true; // Show header if no data yet
   });
 
-  // Add an "Actions" header
-  const displayHeaders = [...simpleHeaders, 'Actions'];
+  // Add an "Actions" header and "Relationships" header after "id"
+  const displayHeaders = ['id', 'Relationships', ...simpleHeaders.filter(h => h !== 'id'), 'Actions'];
+
+  // Helper to find relationships for a given entry ID
+  const getRelatedTargetIds = (entryId: number | string): (number | string)[] => {
+    const entryIdStr = String(entryId);
+    return relationships
+      .filter(rel => String(rel.source_entry_id) === entryIdStr)
+      .map(rel => rel.target_entry_id);
+  };
 
   return (
     <ScrollArea className="rounded-md border">
@@ -63,9 +72,32 @@ export function DataPreviewTable({ data }: DataPreviewTableProps) { // Use the '
         </TableHeader>
         <TableBody>
           {data.length > 0 ? (
-            data.map((entry, index) => (
+            data.map((entry, index) => {
+               const relatedIds = getRelatedTargetIds(entry.id!);
+               return (
               <TableRow key={entry.id || `entry-${index}`}>
-                {simpleHeaders.map((header) => (
+                 {/* ID Cell */}
+                 <TableCell className="whitespace-nowrap max-w-[100px] truncate font-medium">
+                    {entry.id ? String(entry.id) : 'N/A'}
+                 </TableCell>
+
+                 {/* Relationships Cell */}
+                 <TableCell className="whitespace-nowrap max-w-[200px]">
+                  {relatedIds.length > 0 ? (
+                    <div className="flex flex-wrap gap-1">
+                      {relatedIds.map(targetId => (
+                        <Link key={targetId} href={`/data/${targetId}`} className="text-xs bg-secondary text-secondary-foreground px-1.5 py-0.5 rounded hover:bg-accent hover:text-accent-foreground transition-colors">
+                          {String(targetId)}
+                        </Link>
+                      ))}
+                    </div>
+                  ) : (
+                    <span className="text-xs text-muted-foreground italic">None</span>
+                  )}
+                 </TableCell>
+
+                {/* Dynamic Data Cells (excluding ID) */}
+                {simpleHeaders.filter(h => h !== 'id').map((header) => (
                   <TableCell key={`${entry.id || `entry-${index}`}-${header}`} className="whitespace-nowrap max-w-[200px] truncate">
                     {/* Display value, handle potential null/undefined/objects safely */}
                      {typeof entry[header] === 'object' && entry[header] !== null
@@ -73,6 +105,7 @@ export function DataPreviewTable({ data }: DataPreviewTableProps) { // Use the '
                        : String(entry[header] ?? '')}
                   </TableCell>
                 ))}
+
                 {/* Actions Cell */}
                 <TableCell className="whitespace-nowrap text-right">
                   {entry.id ? (
@@ -86,7 +119,8 @@ export function DataPreviewTable({ data }: DataPreviewTableProps) { // Use the '
                   )}
                 </TableCell>
               </TableRow>
-            ))
+               );
+            })
           ) : (
             <TableRow>
               <TableCell colSpan={displayHeaders.length} className="h-24 text-center">

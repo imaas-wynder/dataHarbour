@@ -342,6 +342,29 @@ export async function getRelationshipsBySourceId(sourceEntryId: number | string)
     }
 }
 
+
+/**
+ * Asynchronously fetches all relationships from the simulated in-memory store.
+ *
+ * @returns A promise that resolves to an array of all RelationshipEntry objects.
+ * @throws {Error} If the operation fails.
+ */
+export async function getAllRelationships(): Promise<RelationshipEntry[]> {
+    console.log('getAllRelationships service called');
+    try {
+        await new Promise(resolve => setTimeout(resolve, 150)); // Simulate network delay
+        console.log(`[getAllRelationships] Returning ${simulatedRelationships.length} relationships.`);
+        return JSON.parse(JSON.stringify(simulatedRelationships)); // Return a deep copy
+    } catch (error) {
+        console.error('Error in getAllRelationships service:', error);
+        if (error instanceof Error) {
+            throw new Error(`Failed to fetch all relationships: ${error.message}`);
+        }
+        throw new Error('An unknown error occurred while fetching all relationships.');
+    }
+}
+
+
 // NOTE: To fix data persistence issues, replace this entire file's implementation
 // with code that interacts with a real, persistent database (e.g., PostgreSQL, Firestore).
 // The in-memory arrays (`simulatedDatabase`, `simulatedRelationships`, `nextId`, `nextRelationshipId`)
