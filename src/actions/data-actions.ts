@@ -7,6 +7,7 @@ import {
     getDataById,
     addRelationship,
     getRelationshipsBySourceId,
+    replaceDatabase, // Import the new service function
     type DataEntry,
     type RelationshipEntry,
 } from '@/services/database';
@@ -21,7 +22,7 @@ interface ActionResult {
 }
 
 export async function uploadDataAction(data: DataEntry | DataEntry[]): Promise<ActionResult> {
-  console.log("Server Action: Received data for upload:", data);
+  console.log("Server Action: Received data for upload (Add New):", data);
   try {
     let success = true;
     if (Array.isArray(data)) {
@@ -36,10 +37,10 @@ export async function uploadDataAction(data: DataEntry | DataEntry[]): Promise<A
     if (success) {
       console.log("Server Action: Data added successfully.");
       revalidatePath('/'); // Revalidate the home page to refresh the data preview
-      return { success: true, message: 'Data uploaded successfully.' };
+      return { success: true, message: 'Data added to the current set successfully.' };
     } else {
       console.error("Server Action: One or more entries failed to upload.");
-      return { success: false, error: 'Failed to upload one or more data entries.' };
+      return { success: false, error: 'Failed to add one or more data entries.' };
     }
   } catch (error) {
     console.error('Server Action: Error uploading data:', error);
@@ -77,7 +78,7 @@ export async function cleanDataAction(entryId: number | string): Promise<ActionR
 }
 
 export async function updateDataAction(entryId: number | string, cleanedData: DataEntry): Promise<ActionResult> {
-    console.log(`Server Action: Received request to update data for ID: ${entryId}`);
+    console.log(`Server Action: Received request to update/amend data for ID: ${entryId}`);
     try {
         // Remove id from cleanedData if present, as we use entryId to update
         const { id, ...dataToUpdate } = cleanedData;
@@ -89,10 +90,10 @@ export async function updateDataAction(entryId: number | string, cleanedData: Da
             // Revalidate the specific data page and the main list
             revalidatePath(`/data/${entryId}`);
             revalidatePath('/');
-            return { success: true, message: 'Data updated successfully.' };
+            return { success: true, message: 'Data entry amended successfully.' };
         } else {
             console.error(`Server Action: Failed to update data for ID ${entryId}.`);
-            return { success: false, error: `Failed to update data entry with ID ${entryId}.` };
+            return { success: false, error: `Failed to amend data entry with ID ${entryId}. Ensure the ID exists.` };
         }
     } catch (error) {
         console.error(`Server Action: Error updating data for ID ${entryId}:`, error);
@@ -102,6 +103,37 @@ export async function updateDataAction(entryId: number | string, cleanedData: Da
         }
         return { success: false, error: errorMessage };
     }
+}
+
+/**
+ * Replaces the entire in-memory database with the provided data.
+ * Also clears all relationships.
+ */
+export async function replaceDataAction(newData: DataEntry[]): Promise<ActionResult> {
+  console.log("Server Action: Received request to replace entire dataset with:", newData);
+  try {
+    const success = await replaceDatabase(newData);
+
+    if (success) {
+      console.log("Server Action: Dataset replaced successfully.");
+      // Revalidate all relevant paths. '/' is the most important.
+      revalidatePath('/');
+      // You might need to revalidate individual data paths if users could be viewing them,
+      // but they would likely 404 if the ID is no longer present. Revalidating '/'
+      // ensures the main preview is up-to-date.
+      return { success: true, message: 'New data set created successfully. Existing data replaced.' };
+    } else {
+      console.error("Server Action: Failed to replace the dataset.");
+      return { success: false, error: 'Failed to replace the dataset.' };
+    }
+  } catch (error) {
+    console.error('Server Action: Error replacing dataset:', error);
+    let errorMessage = 'An unexpected error occurred while creating the new data set.';
+    if (error instanceof Error) {
+      errorMessage = error.message;
+    }
+    return { success: false, error: errorMessage };
+  }
 }
 
 

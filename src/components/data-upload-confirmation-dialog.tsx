@@ -1,10 +1,10 @@
 // src/components/data-upload-confirmation-dialog.tsx
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useEffect } from "react"; // Added useEffect
 import { useRouter } from "next/navigation";
 import type { DataEntry } from "@/services/database";
-import { uploadDataAction, updateDataAction } from "@/actions/data-actions";
+import { uploadDataAction, updateDataAction, replaceDataAction } from "@/actions/data-actions"; // Added replaceDataAction
 import { useToast } from "@/hooks/use-toast";
 import {
   Dialog,
@@ -21,7 +21,7 @@ import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Loader2, Save, PlusCircle, Edit } from "lucide-react";
+import { Loader2, Save, PlusCircle, Edit, FilePlus2 } from "lucide-react"; // Added FilePlus2
 
 interface DataUploadConfirmationDialogProps {
   isOpen: boolean;
@@ -30,7 +30,7 @@ interface DataUploadConfirmationDialogProps {
   onProcessingChange: (isProcessing: boolean) => void; // To update parent form's state
 }
 
-type UploadAction = "addNew" | "amend";
+type UploadAction = "addNew" | "amend" | "createNew"; // Added "createNew"
 
 export function DataUploadConfirmationDialog({
   isOpen,
@@ -46,13 +46,12 @@ export function DataUploadConfirmationDialog({
   const [error, setError] = useState<string | null>(null);
 
   // Reset state when dialog opens or data changes
-  useState(() => {
+  useEffect(() => {
     if (isOpen) {
       setActionType("addNew");
       setAmendTargetId("");
       setError(null);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
 
@@ -61,6 +60,27 @@ export function DataUploadConfirmationDialog({
       setError("No data to process.");
       return;
     }
+
+    // Basic validation for amend action
+    if (actionType === "amend") {
+      if (!amendTargetId.trim()) {
+          setError("Target Entry ID is required to amend data.");
+          toast({ variant: "destructive", title: "Error", description: "Target Entry ID cannot be empty." });
+          return;
+      }
+      if (Array.isArray(data)) {
+          setError("Amending data requires uploading a single JSON object, not an array.");
+          toast({ variant: "destructive", title: "Error", description: "Cannot amend with an array." });
+          return;
+      }
+    }
+     // Basic validation for createNew action
+     if (actionType === "createNew" && !Array.isArray(data)) {
+        // Allow creating a new dataset from a single object, but maybe warn?
+        // For now, allow it. User might want a dataset with just one item.
+        // console.warn("Creating a new dataset from a single object.");
+     }
+
 
     setError(null);
     onProcessingChange(true); // Signal parent that processing started
@@ -72,19 +92,16 @@ export function DataUploadConfirmationDialog({
         if (actionType === "addNew") {
           console.log("Dialog: Calling uploadDataAction (Add New)");
           result = await uploadDataAction(data);
-        } else {
-          // Amend requires a target ID and data cannot be an array for simple replacement
-          if (!amendTargetId.trim()) {
-            throw new Error("Target Entry ID is required to amend data.");
-          }
-          if (Array.isArray(data)) {
-            // Limitation: Can't amend with an array of entries directly.
-            // User should upload a single object to replace an existing one.
-             throw new Error("Amending data requires uploading a single JSON object, not an array.");
-          }
+        } else if (actionType === "amend"){
+          // Amend logic (already validated above)
           console.log(`Dialog: Calling updateDataAction (Amend ID: ${amendTargetId})`);
           // updateDataAction replaces the data at the target ID with the new data
-          result = await updateDataAction(amendTargetId.trim(), data);
+          result = await updateDataAction(amendTargetId.trim(), data as DataEntry); // Cast safe due to validation
+        } else { // actionType === "createNew"
+            console.log("Dialog: Calling replaceDataAction (Create New Data Set)");
+             // Ensure data is passed correctly (might be single object or array)
+            const dataToSend = Array.isArray(data) ? data : [data];
+            result = await replaceDataAction(dataToSend);
         }
 
         if (result.success) {
@@ -127,6 +144,33 @@ export function DataUploadConfirmationDialog({
     // We don't control 'open' directly here, it's controlled by the parent via 'isOpen' prop
   };
 
+  const getConfirmButtonLabel = () => {
+    if (isPending) return "Processing...";
+    switch (actionType) {
+        case "addNew": return "Confirm Add New";
+        case "amend": return "Confirm Amend";
+        case "createNew": return "Confirm Create New";
+        default: return "Confirm";
+    }
+  }
+
+    const getConfirmButtonIcon = () => {
+    if (isPending) return <Loader2 className="mr-2 h-4 w-4 animate-spin" />;
+    switch (actionType) {
+        case "addNew": return <PlusCircle className="mr-2 h-4 w-4" />;
+        case "amend": return <Edit className="mr-2 h-4 w-4" />;
+        case "createNew": return <FilePlus2 className="mr-2 h-4 w-4" />;
+        default: return <Save className="mr-2 h-4 w-4" />;
+    }
+  }
+
+  const isConfirmDisabled = () => {
+     if (isPending || !data) return true;
+     if (actionType === 'amend' && (!amendTargetId.trim() || Array.isArray(data))) return true;
+     // No specific validation needed for createNew beyond having data
+     return false;
+  }
+
 
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
@@ -155,15 +199,27 @@ export function DataUploadConfirmationDialog({
             <div className="flex items-center space-x-3 space-y-0">
               <RadioGroupItem value="addNew" id="r1" />
               <Label htmlFor="r1" className="font-normal cursor-pointer flex items-center gap-2">
-                <PlusCircle className="h-4 w-4 text-green-600" /> Add as New Entry / Entries
+                <PlusCircle className="h-4 w-4 text-green-600" /> Add to Current Data Set
               </Label>
             </div>
-            <div className="flex items-center space-x-3 space-y-0">
+             <p className="text-xs text-muted-foreground pl-8">Appends the uploaded entry/entries to the existing data.</p>
+
+            <div className="flex items-center space-x-3 space-y-0 mt-2">
               <RadioGroupItem value="amend" id="r2" />
               <Label htmlFor="r2" className="font-normal cursor-pointer flex items-center gap-2">
-                 <Edit className="h-4 w-4 text-blue-600" /> Amend Existing Entry (Replace Data)
+                 <Edit className="h-4 w-4 text-blue-600" /> Amend Existing Entry
               </Label>
             </div>
+            <p className="text-xs text-muted-foreground pl-8">Replaces the data of a specific entry ID with the uploaded JSON object (requires single object upload).</p>
+
+
+            <div className="flex items-center space-x-3 space-y-0 mt-2">
+              <RadioGroupItem value="createNew" id="r3" />
+              <Label htmlFor="r3" className="font-normal cursor-pointer flex items-center gap-2">
+                 <FilePlus2 className="h-4 w-4 text-orange-600" /> Create New Data Set
+              </Label>
+            </div>
+             <p className="text-xs text-muted-foreground pl-8">Replaces the entire current data set with the uploaded data. All existing data and relationships will be removed.</p>
           </RadioGroup>
 
           {actionType === "amend" && (
@@ -178,9 +234,6 @@ export function DataUploadConfirmationDialog({
                 disabled={isPending}
                 className="bg-background"
               />
-               <p className="text-xs text-muted-foreground">
-                   The data for this ID will be completely replaced with the uploaded JSON object. This cannot be used with JSON arrays.
-               </p>
             </div>
           )}
 
@@ -196,13 +249,9 @@ export function DataUploadConfirmationDialog({
           <DialogClose asChild>
             <Button variant="outline" disabled={isPending}>Cancel</Button>
           </DialogClose>
-          <Button onClick={handleConfirm} disabled={isPending || !data || (actionType === 'amend' && !amendTargetId.trim())}>
-            {isPending ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-               actionType === 'addNew' ? <Save className="mr-2 h-4 w-4" /> : <Edit className="mr-2 h-4 w-4" />
-            )}
-            {isPending ? "Processing..." : (actionType === 'addNew' ? "Confirm Add New" : "Confirm Amend")}
+          <Button onClick={handleConfirm} disabled={isConfirmDisabled()}>
+             {getConfirmButtonIcon()}
+            {getConfirmButtonLabel()}
           </Button>
         </DialogFooter>
       </DialogContent>

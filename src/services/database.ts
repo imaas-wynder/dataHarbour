@@ -55,7 +55,8 @@ export async function addData(data: DataEntry | DataEntry[]): Promise<boolean> {
   console.log('addData service called with:', data);
   try {
     // Simulate potential failure for demonstration
-    const success = Math.random() > 0.1; // 90% success rate
+    // const success = Math.random() > 0.1; // 90% success rate
+    const success = true; // Let's assume success for now unless real error occurs
     await new Promise(resolve => setTimeout(resolve, 150)); // Simulate network delay
 
     if (success) {
@@ -194,6 +195,62 @@ export async function updateDataById(id: number | string, updatedData: Partial<D
         throw new Error(`An unknown error occurred while updating data for ID ${updateId}.`);
     }
 }
+
+/**
+ * Replaces the entire in-memory database with the provided data set.
+ * Resets the relationships table and the next ID counter.
+ * IMPORTANT: This operation is destructive and data will be lost on server restart.
+ *
+ * @param newData The array of DataEntry objects to set as the new database content.
+ * @returns A promise that resolves to true if the replacement was successful, false otherwise.
+ */
+export async function replaceDatabase(newData: DataEntry[]): Promise<boolean> {
+  console.log('replaceDatabase service called. New data count:', newData.length);
+  try {
+    await new Promise(resolve => setTimeout(resolve, 250)); // Simulate delay
+
+    // Reset next ID counter - find the highest ID in the new data or default to 1
+    let maxId = 0;
+    newData.forEach(entry => {
+        // Ensure ID is treated as a number for comparison if possible
+        const numericId = Number(entry.id);
+        if (!isNaN(numericId) && numericId > maxId) {
+            maxId = numericId;
+        } else if (typeof entry.id === 'string' && !isNaN(parseInt(entry.id, 10)) && parseInt(entry.id, 10) > maxId) {
+            // Handle numeric string IDs
+             maxId = parseInt(entry.id, 10);
+        }
+    });
+    nextId = maxId + 1; // Set next ID to be one greater than the max found
+
+    // Assign missing IDs and deep copy the new data
+    const processedData = newData.map((entry, index) => ({
+        ...entry,
+        // Assign a new ID if missing or invalid, starting from the calculated nextId
+        id: entry.id ?? (nextId + index) // Use nextId + index for entries without IDs
+    }));
+    // Update nextId if we assigned new ones
+    nextId = Math.max(nextId, nextId + newData.filter(e => !e.id).length);
+
+
+    // Replace the database
+    simulatedDatabase = JSON.parse(JSON.stringify(processedData)); // Replace with a deep copy
+
+    // Clear relationships and reset relationship ID counter
+    simulatedRelationships = [];
+    nextRelationshipId = 1;
+
+    console.log('Database replaced. New size:', simulatedDatabase.length);
+    console.log('Relationships cleared.');
+    console.log('Next data ID set to:', nextId);
+    console.log(`Current IDs in DB: [${simulatedDatabase.map(e => String(e.id)).join(', ')}]`);
+    return true;
+  } catch (error) {
+    console.error('Error in replaceDatabase service:', error);
+    return false;
+  }
+}
+
 
 /**
  * Asynchronously adds a relationship between two data entries in the simulated store.
