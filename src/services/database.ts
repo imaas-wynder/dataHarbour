@@ -131,20 +131,20 @@ export async function getDataById(id: number | string): Promise<DataEntry | null
   try {
     await new Promise(resolve => setTimeout(resolve, 100)); // Simulate network delay
 
+    // Log each comparison
     const entry = simulatedDatabase.find(entry => {
         const entryIdStr = String(entry.id);
-        // Add logging inside the find callback for detailed comparison if needed
-        // console.log(`[getDataById] Comparing: Stored ID "${entryIdStr}" (Type: ${typeof entryIdStr}) vs Search ID "${searchId}" (Type: ${typeof searchId})`);
+        console.log(`[getDataById] Comparing: Stored ID "${entryIdStr}" (Type: ${typeof entryIdStr}) vs Search ID "${searchId}" (Type: ${typeof searchId}) => Match: ${entryIdStr === searchId}`);
         return entryIdStr === searchId;
     });
 
 
     if (entry) {
-        console.log(`[getDataById] Found entry for ID ${searchId}:`, entry);
+        console.log(`[getDataById] Found entry for ID ${searchId}:`, JSON.stringify(entry)); // Log the found entry
         // Return a deep copy to prevent modification of the stored object
         return JSON.parse(JSON.stringify(entry));
     } else {
-        console.warn(`[getDataById] Entry not found for ID ${searchId}. This is expected if the server restarted (e.g., due to file changes/HMR) after the data was added, as the in-memory store was reset.`);
+        console.warn(`[getDataById] Entry not found for ID ${searchId}. Current DB IDs: [${simulatedDatabase.map(e => String(e.id)).join(', ')}]. This is expected if the server restarted (e.g., due to file changes/HMR) after the data was added, as the in-memory store was reset.`);
         return null;
     }
   } catch (error) {
@@ -181,10 +181,10 @@ export async function updateDataById(id: number | string, updatedData: Partial<D
             const dataToMerge = { ...updatedData };
             delete dataToMerge.id; // Remove id from payload if present, keep the original
             simulatedDatabase[index] = { ...currentEntry, ...dataToMerge };
-            console.log('Updated entry:', simulatedDatabase[index]);
+            console.log('[updateDataById] Updated entry:', simulatedDatabase[index]);
             return true;
         } else {
-            console.log(`Entry not found for update (ID: ${updateId}).`);
+            console.warn(`[updateDataById] Entry not found for update (ID: ${updateId}). Current DB IDs: [${simulatedDatabase.map(e => String(e.id)).join(', ')}]`);
             return false;
         }
     } catch (error) {
@@ -303,8 +303,8 @@ export async function addRelationship(sourceEntryId: number | string, targetEntr
             created_at: new Date().toISOString(),
         };
         simulatedRelationships.push(newRelationship);
-        console.log('Added new relationship:', newRelationship);
-        console.log('Current simulated relationships count:', simulatedRelationships.length);
+        console.log('[addRelationship] Added new relationship:', newRelationship);
+        console.log('[addRelationship] Current simulated relationships count:', simulatedRelationships.length);
         return JSON.parse(JSON.stringify(newRelationship)); // Return a copy
     } catch (error) {
         console.error(`Error in addRelationship service for ${sourceIdStr} -> ${targetIdStr}:`, error);
@@ -331,7 +331,7 @@ export async function getRelationshipsBySourceId(sourceEntryId: number | string)
         const relationships = simulatedRelationships.filter(
             rel => String(rel.source_entry_id) === sourceIdStr
         );
-        console.log(`Found ${relationships.length} relationships for source ID ${sourceIdStr}`);
+        console.log(`[getRelationshipsBySourceId] Found ${relationships.length} relationships for source ID ${sourceIdStr}`);
         return JSON.parse(JSON.stringify(relationships)); // Return a deep copy
     } catch (error) {
         console.error(`Error in getRelationshipsBySourceId service for source ID ${sourceIdStr}:`, error);

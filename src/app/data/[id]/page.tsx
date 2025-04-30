@@ -1,4 +1,4 @@
-// src/app/data/[id]/page.tsx
+{// src/app/data/[id]/page.tsx
 import { notFound } from 'next/navigation';
 import { getDataById } from '@/services/database'; // Removed getRelationshipsBySourceId import as relationships are handled client-side
 import { DataDetailView } from '@/components/data-detail-view';
@@ -27,7 +27,7 @@ export default async function DataDetailPage({ params }: DataDetailPageProps) {
     dataEntry = await getDataById(id);
 
     if (dataEntry) {
-        console.log(`[DataDetailPage] Successfully fetched data for ID: ${id}. Data:`, dataEntry);
+        console.log(`[DataDetailPage] Successfully fetched data for ID: ${id}. Data:`, JSON.stringify(dataEntry));
     } else {
         // This is the critical point for 404s
         console.warn(`[DataDetailPage] getDataById returned null for ID: ${id}. This indicates the entry was not found in the current in-memory database session. Check if the server restarted after adding the data.`);
