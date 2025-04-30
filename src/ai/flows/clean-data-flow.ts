@@ -39,13 +39,14 @@ const cleanDataPrompt = ai.definePrompt({
 
 Original Data Entry:
 \`\`\`json
-{{{jsonStringify this}}}
+{{{dataJsonString}}}
 \`\`\`
 
 Return ONLY the cleaned JSON object.`,
-  // Custom render function to stringify the input object for the prompt
+  // Prepare the data for the prompt template
   render(input) {
-    return { jsonStringify: JSON.stringify(input, null, 2) };
+    // Stringify the input data and make it available as 'dataJsonString' in the template
+    return { dataJsonString: JSON.stringify(input, null, 2) };
   },
 });
 
@@ -64,6 +65,7 @@ export const cleanDataFlow = ai.defineFlow<
     console.log("Genkit Flow: Received data for cleaning:", dataEntry);
 
     // Call the LLM prompt with the data entry
+    // The render function prepares the data for the template
     const result = await cleanDataPrompt(dataEntry);
     const cleanedOutput = result.output();
 
