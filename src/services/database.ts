@@ -7,6 +7,17 @@ export interface DataEntry {
   [key: string]: any; // Allows for dynamic keys and any value type
 }
 
+/**
+ * Represents a relationship between two data entries.
+ */
+export interface RelationshipEntry {
+    id?: number; // Primary key for the relationship itself
+    source_entry_id: number | string;
+    target_entry_id: number | string;
+    created_at?: string | Date;
+}
+
+
 // Simulated database store
 let simulatedDatabase: DataEntry[] = [
    { id: 1, name: 'Simulated Example Data', value: 123, timestamp: new Date().toISOString(), details: 'Some initial details' },
@@ -14,6 +25,8 @@ let simulatedDatabase: DataEntry[] = [
    { id: 3, complex: { nested: true, arr: [1, 2] }, description: 'Complex object example', timestamp: new Date().toISOString(), status: 'pending' },
  ];
 let nextId = 4;
+let simulatedRelationships: RelationshipEntry[] = []; // Added simulated store for relationships
+let nextRelationshipId = 1;
 
 /**
  * Asynchronously adds a data entry to the simulated database.
@@ -134,3 +147,90 @@ export async function updateDataById(id: number | string, updatedData: Partial<D
         throw new Error(`An unknown error occurred while updating data for ID ${id}.`);
     }
 }
+
+/**
+ * Asynchronously adds a relationship between two data entries.
+ *
+ * @param sourceEntryId The ID of the source entry.
+ * @param targetEntryId The ID of the target entry to relate.
+ * @returns A promise that resolves to the newly created RelationshipEntry or null if failed.
+ * @throws {Error} If the operation fails.
+ */
+export async function addRelationship(sourceEntryId: number | string, targetEntryId: number | string): Promise<RelationshipEntry | null> {
+    console.log(`addRelationship service called: Source ${sourceEntryId}, Target ${targetEntryId}`);
+    try {
+        await new Promise(resolve => setTimeout(resolve, 100)); // Simulate network delay
+
+        // Basic validation: check if source and target entries exist (optional, but good practice)
+        const sourceExists = simulatedDatabase.some(entry => String(entry.id) === String(sourceEntryId));
+        const targetExists = simulatedDatabase.some(entry => String(entry.id) === String(targetEntryId));
+
+        if (!sourceExists || !targetExists) {
+            console.warn(`Cannot add relationship: Source (${sourceEntryId}) or Target (${targetEntryId}) entry does not exist.`);
+            return null; // Indicate failure due to non-existent entries
+        }
+
+        // Prevent duplicate relationships (source -> target)
+        const existingRelationship = simulatedRelationships.find(
+            rel => String(rel.source_entry_id) === String(sourceEntryId) &&
+                   String(rel.target_entry_id) === String(targetEntryId)
+        );
+
+        if (existingRelationship) {
+            console.warn(`Relationship from ${sourceEntryId} to ${targetEntryId} already exists.`);
+            return existingRelationship; // Return existing one or null, depending on desired behavior
+        }
+
+        // Prevent self-referencing relationships
+         if (String(sourceEntryId) === String(targetEntryId)) {
+            console.warn(`Cannot add self-referencing relationship for ID ${sourceEntryId}.`);
+            return null;
+         }
+
+
+        const newRelationship: RelationshipEntry = {
+            id: nextRelationshipId++,
+            source_entry_id: sourceEntryId,
+            target_entry_id: targetEntryId,
+            created_at: new Date().toISOString(),
+        };
+        simulatedRelationships.push(newRelationship);
+        console.log('Added new relationship:', newRelationship);
+        return JSON.parse(JSON.stringify(newRelationship)); // Return a copy
+    } catch (error) {
+        console.error(`Error in addRelationship service for ${sourceEntryId} -> ${targetEntryId}:`, error);
+        if (error instanceof Error) {
+            throw new Error(`Failed to add relationship: ${error.message}`);
+        }
+        throw new Error('An unknown error occurred while adding the relationship.');
+    }
+}
+
+/**
+ * Asynchronously fetches all relationships originating from a specific source entry ID.
+ *
+ * @param sourceEntryId The ID of the source entry.
+ * @returns A promise that resolves to an array of RelationshipEntry objects.
+ * @throws {Error} If the operation fails.
+ */
+export async function getRelationshipsBySourceId(sourceEntryId: number | string): Promise<RelationshipEntry[]> {
+    console.log(`getRelationshipsBySourceId service called for source ID: ${sourceEntryId}`);
+    try {
+        await new Promise(resolve => setTimeout(resolve, 150)); // Simulate network delay
+        const relationships = simulatedRelationships.filter(
+            rel => String(rel.source_entry_id) === String(sourceEntryId)
+        );
+        console.log(`Found ${relationships.length} relationships for source ID ${sourceEntryId}`);
+        return JSON.parse(JSON.stringify(relationships)); // Return a deep copy
+    } catch (error) {
+        console.error(`Error in getRelationshipsBySourceId service for source ID ${sourceEntryId}:`, error);
+        if (error instanceof Error) {
+            throw new Error(`Failed to fetch relationships for ID ${sourceEntryId}: ${error.message}`);
+        }
+        throw new Error(`An unknown error occurred while fetching relationships for ID ${sourceEntryId}.`);
+    }
+}
+
+// NOTE: In a real application, you would add functions to initialize the
+// relationships table (e.g., CREATE TABLE IF NOT EXISTS data_relationships...).
+// For this simulation, we just use the in-memory array `simulatedRelationships`.

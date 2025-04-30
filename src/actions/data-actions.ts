@@ -1,7 +1,15 @@
 // src/actions/data-actions.ts
 'use server';
 
-import { addData, updateDataById, type DataEntry, getDataById } from '@/services/database';
+import {
+    addData,
+    updateDataById,
+    getDataById,
+    addRelationship,
+    getRelationshipsBySourceId,
+    type DataEntry,
+    type RelationshipEntry,
+} from '@/services/database';
 import { revalidatePath } from 'next/cache';
 import { cleanDataFlow } from '@/ai/flows/clean-data-flow'; // Import the Genkit flow
 
@@ -9,7 +17,7 @@ interface ActionResult {
   success: boolean;
   message?: string;
   error?: string;
-  data?: any; // To return cleaned data or other relevant info
+  data?: any; // To return cleaned data, relationships, or other relevant info
 }
 
 export async function uploadDataAction(data: DataEntry | DataEntry[]): Promise<ActionResult> {
@@ -89,6 +97,62 @@ export async function updateDataAction(entryId: number | string, cleanedData: Da
     } catch (error) {
         console.error(`Server Action: Error updating data for ID ${entryId}:`, error);
         let errorMessage = 'An unexpected error occurred during data update.';
+        if (error instanceof Error) {
+            errorMessage = error.message;
+        }
+        return { success: false, error: errorMessage };
+    }
+}
+
+
+// --- Relationship Actions ---
+
+export async function addRelationshipAction(sourceId: number | string, targetId: number | string): Promise<ActionResult> {
+    console.log(`Server Action: Received request to add relationship: ${sourceId} -> ${targetId}`);
+    try {
+        // Validate IDs are not the same before calling service
+        if (String(sourceId) === String(targetId)) {
+             return { success: false, error: 'Cannot create a relationship with the same entry.' };
+        }
+
+        const newRelationship = await addRelationship(sourceId, targetId);
+
+        if (newRelationship) {
+            console.log("Server Action: Relationship added successfully.");
+            // Revalidate the data detail page for the source ID to show the new relationship
+            revalidatePath(`/data/${sourceId}`);
+            return { success: true, message: 'Relationship added successfully.', data: newRelationship };
+        } else {
+             // Check if entries exist to provide a more specific error
+             const sourceExists = !!await getDataById(sourceId);
+             const targetExists = !!await getDataById(targetId);
+             let errorMsg = 'Failed to add relationship.';
+             if (!sourceExists) errorMsg = `Source entry with ID ${sourceId} not found.`;
+             else if (!targetExists) errorMsg = `Target entry with ID ${targetId} not found.`;
+             // Could also check for duplicates if addRelationship returns null for that reason
+
+             console.error(`Server Action: Failed to add relationship ${sourceId} -> ${targetId}. ${errorMsg}`);
+             return { success: false, error: errorMsg };
+        }
+    } catch (error) {
+        console.error(`Server Action: Error adding relationship ${sourceId} -> ${targetId}:`, error);
+        let errorMessage = 'An unexpected error occurred while adding the relationship.';
+        if (error instanceof Error) {
+            errorMessage = error.message;
+        }
+        return { success: false, error: errorMessage };
+    }
+}
+
+export async function getRelationshipsAction(sourceId: number | string): Promise<ActionResult> {
+    console.log(`Server Action: Received request to get relationships for source ID: ${sourceId}`);
+    try {
+        const relationships = await getRelationshipsBySourceId(sourceId);
+        console.log(`Server Action: Found ${relationships.length} relationships for ${sourceId}.`);
+        return { success: true, data: relationships };
+    } catch (error) {
+        console.error(`Server Action: Error getting relationships for ID ${sourceId}:`, error);
+        let errorMessage = 'An unexpected error occurred while fetching relationships.';
         if (error instanceof Error) {
             errorMessage = error.message;
         }
