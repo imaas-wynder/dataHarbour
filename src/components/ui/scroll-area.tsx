@@ -14,12 +14,9 @@ const ScrollArea = React.forwardRef<
     className={cn("relative overflow-hidden", className)}
     {...props}
   >
-    {/* Use asChild to pass the ref correctly to the underlying div */}
-    <ScrollAreaPrimitive.Viewport asChild className="h-full w-full rounded-[inherit]">
-       {/* The direct child needs to be able to accept the ref */}
-      <div className="h-full w-full">
-          {children}
-      </div>
+    {/* Removed asChild and the intermediate div to prevent hydration errors with Table */}
+    <ScrollAreaPrimitive.Viewport className="h-full w-full rounded-[inherit]">
+      {children}
     </ScrollAreaPrimitive.Viewport>
     <ScrollBar />
     <ScrollAreaPrimitive.Corner />
