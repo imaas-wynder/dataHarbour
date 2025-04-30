@@ -1,5 +1,5 @@
 import { DataUploadForm } from "@/components/data-upload-form";
-import { DataPreviewTable } from "@/components/data-preview-table";
+import { DataPreviewSection } from "@/components/data-preview-section"; // Import the new client component
 import { getAllData } from "@/services/database";
 import type { DataEntry } from "@/services/database";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,6 +16,8 @@ export default async function Home() {
   } catch (e) {
     console.error("Failed to fetch data:", e);
     error = "Failed to load data. Please try again later.";
+    // Assign empty array even on error so the preview section can render
+    initialData = [];
   }
 
   return (
@@ -31,18 +33,8 @@ export default async function Home() {
 
       <Separator />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Data Preview</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {error ? (
-            <p className="text-destructive">{error}</p>
-          ) : (
-            <DataPreviewTable initialData={initialData} />
-          )}
-        </CardContent>
-      </Card>
+      {/* Use the new client component for the preview section */}
+      <DataPreviewSection initialData={initialData} error={error} />
     </div>
   );
 }
