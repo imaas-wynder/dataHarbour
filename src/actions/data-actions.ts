@@ -5,10 +5,12 @@ import {
     addData,
     updateDataById,
     getDataById,
+    getDataByIds, // Import the new service function
     addRelationship,
     getRelationshipsBySourceId,
-    replaceDatabase, // Import the new service function
-    getAllData, // Import getAllData for potentially returning updated list
+    replaceDatabase,
+    getAllData,
+    getAllRelationships, // Import getAllRelationships
     type DataEntry,
     type RelationshipEntry,
 } from '@/services/database';
@@ -38,9 +40,7 @@ export async function uploadDataAction(data: DataEntry | DataEntry[]): Promise<A
     if (success) {
       console.log("Server Action: Data added successfully.");
       revalidatePath('/'); // Revalidate the home page to refresh the data preview
-      // Fetch and return the updated list? Maybe too much data. Revalidation should suffice.
-      // const updatedData = await getAllData();
-      return { success: true, message: 'Data added to the current set successfully.'/*, data: updatedData*/ };
+      return { success: true, message: 'Data added to the current set successfully.' };
     } else {
       console.error("Server Action: One or more entries failed to upload.");
       return { success: false, error: 'Failed to add one or more data entries.' };
@@ -93,8 +93,7 @@ export async function updateDataAction(entryId: number | string, cleanedData: Da
             // Revalidate the specific data page and the main list
             revalidatePath(`/data/${entryId}`);
             revalidatePath('/');
-            // const updatedData = await getAllData();
-            return { success: true, message: 'Data entry amended successfully.'/*, data: updatedData*/ };
+            return { success: true, message: 'Data entry amended successfully.' };
         } else {
             console.error(`Server Action: Failed to update data for ID ${entryId}.`);
             return { success: false, error: `Failed to amend data entry with ID ${entryId}. Ensure the ID exists.` };
@@ -122,11 +121,7 @@ export async function replaceDataAction(newData: DataEntry[]): Promise<ActionRes
       console.log("Server Action: Dataset replaced successfully.");
       // Revalidate all relevant paths. '/' is the most important.
       revalidatePath('/');
-      // You might need to revalidate individual data paths if users could be viewing them,
-      // but they would likely 404 if the ID is no longer present. Revalidating '/'
-      // ensures the main preview is up-to-date.
-       // const updatedData = await getAllData();
-      return { success: true, message: 'New data set created successfully. Existing data replaced.'/*, data: updatedData*/ };
+      return { success: true, message: 'New data set created successfully. Existing data replaced.' };
     } else {
       console.error("Server Action: Failed to replace the dataset.");
       return { success: false, error: 'Failed to replace the dataset.' };
@@ -139,6 +134,25 @@ export async function replaceDataAction(newData: DataEntry[]): Promise<ActionRes
     }
     return { success: false, error: errorMessage };
   }
+}
+
+/**
+ * Fetches multiple data entries by their IDs.
+ */
+export async function getDataByIdsAction(ids: (number | string)[]): Promise<ActionResult> {
+    console.log(`Server Action: Received request to get data for IDs: [${ids.join(', ')}]`);
+    try {
+        const data = await getDataByIds(ids);
+        console.log(`Server Action: Found ${data.length} entries for the requested IDs.`);
+        return { success: true, data: data };
+    } catch (error) {
+        console.error(`Server Action: Error getting data for IDs [${ids.join(', ')}]:`, error);
+        let errorMessage = 'An unexpected error occurred while fetching multiple data entries.';
+        if (error instanceof Error) {
+            errorMessage = error.message;
+        }
+        return { success: false, error: errorMessage };
+    }
 }
 
 
@@ -158,8 +172,7 @@ export async function addRelationshipAction(sourceId: number | string, targetId:
             console.log("Server Action: Relationship added successfully.");
             // Revalidate the data detail page for the source ID to show the new relationship
             revalidatePath(`/data/${sourceId}`);
-            // Revalidate the main page - this helps ensure that if the user navigates back
-            // and uses the filter, the underlying data list used by the filter might be refreshed.
+            // Revalidate the main page to potentially update the relationship display there
             revalidatePath('/');
             return { success: true, message: 'Relationship added successfully.', data: newRelationship };
         } else {
@@ -186,7 +199,7 @@ export async function addRelationshipAction(sourceId: number | string, targetId:
 
 /**
  * Fetches relationships originating from a specific source ID.
- * Used by the detail view and the main page filter.
+ * Used by the detail view.
  */
 export async function getRelationshipsAction(sourceId: number | string): Promise<ActionResult> {
     console.log(`Server Action: Received request to get relationships for source ID: ${sourceId}`);
@@ -202,4 +215,42 @@ export async function getRelationshipsAction(sourceId: number | string): Promise
         }
         return { success: false, error: errorMessage };
     }
+}
+
+/**
+ * Fetches all relationships. Used by the main page filter.
+ */
+export async function getAllRelationshipsAction(): Promise<ActionResult> {
+    console.log("Server Action: Received request to get all relationships.");
+    try {
+        const relationships = await getAllRelationships();
+        console.log(`Server Action: Found ${relationships.length} total relationships.`);
+        return { success: true, data: relationships };
+    } catch (error) {
+        console.error("Server Action: Error getting all relationships:", error);
+        let errorMessage = 'An unexpected error occurred while fetching all relationships.';
+        if (error instanceof Error) {
+            errorMessage = error.message;
+        }
+        return { success: false, error: errorMessage };
+    }
+}
+
+/**
+ * Fetches all data entries. Used by the main page preview.
+ */
+export async function getAllDataAction(): Promise<ActionResult> {
+    console.log("Server Action: Received request to get all data.");
+     try {
+         const data = await getAllData();
+         console.log(`Server Action: Found ${data.length} total data entries.`);
+         return { success: true, data: data };
+     } catch (error) {
+         console.error("Server Action: Error getting all data:", error);
+         let errorMessage = 'An unexpected error occurred while fetching all data.';
+         if (error instanceof Error) {
+             errorMessage = error.message;
+         }
+         return { success: false, error: errorMessage };
+     }
 }

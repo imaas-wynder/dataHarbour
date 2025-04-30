@@ -54,24 +54,18 @@ let nextRelationshipId = 1; // Next ID for new relationships
 export async function addData(data: DataEntry | DataEntry[]): Promise<boolean> {
   console.log('addData service called with:', data);
   try {
-    // Simulate potential failure for demonstration
-    // const success = Math.random() > 0.1; // 90% success rate
-    const success = true; // Let's assume success for now unless real error occurs
+    const success = true;
     await new Promise(resolve => setTimeout(resolve, 150)); // Simulate network delay
 
     if (success) {
        console.log('Simulated success in addData for:', data);
        if (Array.isArray(data)) {
-        // Add each entry in the array
         data.forEach(entry => {
-          // Assign a new ID only if one is not provided
           const newEntry = { ...entry, id: entry.id ?? nextId++ };
           simulatedDatabase.push(newEntry);
           console.log(`[addData] Added entry with ID: ${newEntry.id}`);
         });
        } else {
-         // Add single entry
-         // Assign a new ID only if one is not provided
          const newEntry = { ...data, id: data.id ?? nextId++ };
          simulatedDatabase.push(newEntry);
          console.log(`[addData] Added entry with ID: ${newEntry.id}`);
@@ -101,7 +95,6 @@ export async function getAllData(): Promise<DataEntry[]> {
   try {
      console.log('Returning current simulated data from getAllData. Count:', simulatedDatabase.length);
      await new Promise(resolve => setTimeout(resolve, 300)); // Simulate network delay
-     // Return a deep copy to prevent direct mutation of the simulated store
      return JSON.parse(JSON.stringify(simulatedDatabase));
    } catch (error) {
      console.error('Error in getAllData service:', error);
@@ -122,26 +115,21 @@ export async function getAllData(): Promise<DataEntry[]> {
  * @throws {Error} If the operation fails.
  */
 export async function getDataById(id: number | string): Promise<DataEntry | null> {
-  const searchId = String(id); // Normalize search ID to string
+  const searchId = String(id);
   console.log(`[getDataById] Service called for ID: ${searchId}`);
-  // --- Add Detailed Logging Here ---
   console.log(`[getDataById] Current simulatedDatabase state before search (IDs): [${simulatedDatabase.map(e => String(e.id)).join(', ')}]`);
   console.log(`[getDataById] Searching for ID: ${searchId} (Type: ${typeof searchId})`);
-  // --- End Detailed Logging ---
   try {
     await new Promise(resolve => setTimeout(resolve, 100)); // Simulate network delay
 
-    // Log each comparison
     const entry = simulatedDatabase.find(entry => {
         const entryIdStr = String(entry.id);
         console.log(`[getDataById] Comparing: Stored ID "${entryIdStr}" (Type: ${typeof entryIdStr}) vs Search ID "${searchId}" (Type: ${typeof searchId}) => Match: ${entryIdStr === searchId}`);
         return entryIdStr === searchId;
     });
 
-
     if (entry) {
-        console.log(`[getDataById] Found entry for ID ${searchId}:`, JSON.stringify(entry)); // Log the found entry
-        // Return a deep copy to prevent modification of the stored object
+        console.log(`[getDataById] Found entry for ID ${searchId}:`, JSON.stringify(entry));
         return JSON.parse(JSON.stringify(entry));
     } else {
         console.warn(`[getDataById] Entry not found for ID ${searchId}. Current DB IDs: [${simulatedDatabase.map(e => String(e.id)).join(', ')}]. This is expected if the server restarted (e.g., due to file changes/HMR) after the data was added, as the in-memory store was reset.`);
@@ -153,6 +141,40 @@ export async function getDataById(id: number | string): Promise<DataEntry | null
       throw new Error(`Failed to fetch data for ID ${searchId}: ${error.message}`);
     }
     throw new Error(`An unknown error occurred while fetching data for ID ${searchId}.`);
+  }
+}
+
+/**
+ * Asynchronously fetches multiple data entries by their IDs from the simulated database.
+ * Retrieves data currently held in the in-memory store for the active server session.
+ *
+ * @param ids An array of IDs (string or number) of the data entries to fetch.
+ * @returns A promise that resolves to an array of DataEntry objects found.
+ * @throws {Error} If the operation fails.
+ */
+export async function getDataByIds(ids: (number | string)[]): Promise<DataEntry[]> {
+  const searchIds = ids.map(String); // Normalize all search IDs to strings
+  console.log(`[getDataByIds] Service called for IDs: [${searchIds.join(', ')}]`);
+  console.log(`[getDataByIds] Current simulatedDatabase state before search (IDs): [${simulatedDatabase.map(e => String(e.id)).join(', ')}]`);
+  try {
+    await new Promise(resolve => setTimeout(resolve, 150)); // Simulate network delay
+
+    const entries = simulatedDatabase.filter(entry => {
+        const entryIdStr = String(entry.id);
+        const isIncluded = searchIds.includes(entryIdStr);
+        console.log(`[getDataByIds] Checking entry ID "${entryIdStr}": Included in [${searchIds.join(', ')}]? ${isIncluded}`);
+        return isIncluded;
+    });
+
+    console.log(`[getDataByIds] Found ${entries.length} entries for IDs [${searchIds.join(', ')}].`);
+    // Return deep copies
+    return JSON.parse(JSON.stringify(entries));
+  } catch (error) {
+    console.error(`[getDataByIds] Error fetching data for IDs [${searchIds.join(', ')}]:`, error);
+    if (error instanceof Error) {
+      throw new Error(`Failed to fetch data for multiple IDs: ${error.message}`);
+    }
+    throw new Error('An unknown error occurred while fetching data for multiple IDs.');
   }
 }
 
@@ -175,11 +197,9 @@ export async function updateDataById(id: number | string, updatedData: Partial<D
         const index = simulatedDatabase.findIndex(entry => String(entry.id) === updateId);
 
         if (index !== -1) {
-            // Merge existing data with updated data, ensuring ID remains unchanged
             const currentEntry = simulatedDatabase[index];
-            // Make sure not to overwrite the ID with undefined from updatedData
             const dataToMerge = { ...updatedData };
-            delete dataToMerge.id; // Remove id from payload if present, keep the original
+            delete dataToMerge.id;
             simulatedDatabase[index] = { ...currentEntry, ...dataToMerge };
             console.log('[updateDataById] Updated entry:', simulatedDatabase[index]);
             return true;
@@ -209,34 +229,25 @@ export async function replaceDatabase(newData: DataEntry[]): Promise<boolean> {
   try {
     await new Promise(resolve => setTimeout(resolve, 250)); // Simulate delay
 
-    // Reset next ID counter - find the highest ID in the new data or default to 1
     let maxId = 0;
     newData.forEach(entry => {
-        // Ensure ID is treated as a number for comparison if possible
         const numericId = Number(entry.id);
         if (!isNaN(numericId) && numericId > maxId) {
             maxId = numericId;
         } else if (typeof entry.id === 'string' && !isNaN(parseInt(entry.id, 10)) && parseInt(entry.id, 10) > maxId) {
-            // Handle numeric string IDs
              maxId = parseInt(entry.id, 10);
         }
     });
-    nextId = maxId + 1; // Set next ID to be one greater than the max found
+    nextId = maxId + 1;
 
-    // Assign missing IDs and deep copy the new data
     const processedData = newData.map((entry, index) => ({
         ...entry,
-        // Assign a new ID if missing or invalid, starting from the calculated nextId
-        id: entry.id ?? (nextId + index) // Use nextId + index for entries without IDs
+        id: entry.id ?? (nextId + index)
     }));
-    // Update nextId if we assigned new ones
     nextId = Math.max(nextId, nextId + newData.filter(e => !e.id).length);
 
+    simulatedDatabase = JSON.parse(JSON.stringify(processedData));
 
-    // Replace the database
-    simulatedDatabase = JSON.parse(JSON.stringify(processedData)); // Replace with a deep copy
-
-    // Clear relationships and reset relationship ID counter
     simulatedRelationships = [];
     nextRelationshipId = 1;
 
@@ -268,16 +279,14 @@ export async function addRelationship(sourceEntryId: number | string, targetEntr
     try {
         await new Promise(resolve => setTimeout(resolve, 100)); // Simulate network delay
 
-        // Basic validation: check if source and target entries exist in the current in-memory store
         const sourceExists = simulatedDatabase.some(entry => String(entry.id) === sourceIdStr);
         const targetExists = simulatedDatabase.some(entry => String(entry.id) === targetIdStr);
 
         if (!sourceExists || !targetExists) {
             console.warn(`Cannot add relationship: Source (${sourceIdStr}) or Target (${targetIdStr}) entry does not exist in current session. DB IDs: [${simulatedDatabase.map(e => String(e.id)).join(', ')}]`);
-            return null; // Indicate failure due to non-existent entries
+            return null;
         }
 
-        // Prevent duplicate relationships (source -> target)
         const existingRelationship = simulatedRelationships.find(
             rel => String(rel.source_entry_id) === sourceIdStr &&
                    String(rel.target_entry_id) === targetIdStr
@@ -285,27 +294,24 @@ export async function addRelationship(sourceEntryId: number | string, targetEntr
 
         if (existingRelationship) {
             console.warn(`Relationship from ${sourceIdStr} to ${targetIdStr} already exists.`);
-            // Return existing one or null, depending on desired behavior. Returning existing for idempotency.
             return JSON.parse(JSON.stringify(existingRelationship));
         }
 
-        // Prevent self-referencing relationships
          if (sourceIdStr === targetIdStr) {
             console.warn(`Cannot add self-referencing relationship for ID ${sourceIdStr}.`);
             return null;
          }
 
-
         const newRelationship: RelationshipEntry = {
             id: nextRelationshipId++,
-            source_entry_id: sourceEntryId, // Keep original type if needed, but use string for comparison
-            target_entry_id: targetEntryId, // Keep original type if needed
+            source_entry_id: sourceEntryId,
+            target_entry_id: targetEntryId,
             created_at: new Date().toISOString(),
         };
         simulatedRelationships.push(newRelationship);
         console.log('[addRelationship] Added new relationship:', newRelationship);
         console.log('[addRelationship] Current simulated relationships count:', simulatedRelationships.length);
-        return JSON.parse(JSON.stringify(newRelationship)); // Return a copy
+        return JSON.parse(JSON.stringify(newRelationship));
     } catch (error) {
         console.error(`Error in addRelationship service for ${sourceIdStr} -> ${targetIdStr}:`, error);
         if (error instanceof Error) {
@@ -332,7 +338,7 @@ export async function getRelationshipsBySourceId(sourceEntryId: number | string)
             rel => String(rel.source_entry_id) === sourceIdStr
         );
         console.log(`[getRelationshipsBySourceId] Found ${relationships.length} relationships for source ID ${sourceIdStr}`);
-        return JSON.parse(JSON.stringify(relationships)); // Return a deep copy
+        return JSON.parse(JSON.stringify(relationships));
     } catch (error) {
         console.error(`Error in getRelationshipsBySourceId service for source ID ${sourceIdStr}:`, error);
         if (error instanceof Error) {
@@ -354,7 +360,7 @@ export async function getAllRelationships(): Promise<RelationshipEntry[]> {
     try {
         await new Promise(resolve => setTimeout(resolve, 150)); // Simulate network delay
         console.log(`[getAllRelationships] Returning ${simulatedRelationships.length} relationships.`);
-        return JSON.parse(JSON.stringify(simulatedRelationships)); // Return a deep copy
+        return JSON.parse(JSON.stringify(simulatedRelationships));
     } catch (error) {
         console.error('Error in getAllRelationships service:', error);
         if (error instanceof Error) {

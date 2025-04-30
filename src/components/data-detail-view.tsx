@@ -1,17 +1,23 @@
 // src/components/data-detail-view.tsx
 "use client";
 
-import { useState, useTransition, useEffect } from 'react';
-import type { DataEntry, RelationshipEntry } from '@/services/database'; // Import RelationshipEntry
+import { useState, useTransition, useEffect, useMemo, useCallback } from 'react';
+import type { DataEntry, RelationshipEntry } from '@/services/database';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-import { cleanDataAction, updateDataAction, addRelationshipAction, getRelationshipsAction } from '@/actions/data-actions'; // Import relationship actions
-import { Loader2, Save, Sparkles, Edit, XCircle, LinkIcon, Plus, Trash2 } from 'lucide-react'; // Added LinkIcon, Plus, Trash2
+import {
+  cleanDataAction,
+  updateDataAction,
+  addRelationshipAction,
+  getRelationshipsAction,
+  getDataByIdsAction // Import action to fetch multiple entries
+} from '@/actions/data-actions';
+import { Loader2, Save, Sparkles, Edit, XCircle, LinkIcon, Plus, Trash2, Columns3, CheckSquare } from 'lucide-react'; // Added Columns3, CheckSquare
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Label } from "@/components/ui/label";
-import { Input } from '@/components/ui/input'; // Added Input
+import { Input } from '@/components/ui/input';
 import {
   Table,
   TableBody,
@@ -19,9 +25,9 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table"; // Added Table components
-import Link from 'next/link'; // Added Link
-
+} from "@/components/ui/table";
+import Link from 'next/link';
+import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'; // Added ScrollArea
 
 interface DataDetailViewProps {
   initialData: DataEntry;
@@ -33,44 +39,110 @@ export function DataDetailView({ initialData, entryId }: DataDetailViewProps) {
   const [cleanedDataSuggestion, setCleanedDataSuggestion] = useState<DataEntry | null>(null);
   const [isCleaning, startCleaningTransition] = useTransition();
   const [isSaving, startSavingTransition] = useTransition();
-  const [isEditing, setIsEditing] = useState(false); // State for manual edit mode
-  const [editedJsonString, setEditedJsonString] = useState(''); // State for the textarea content during edit
+  const [isEditing, setIsEditing] = useState(false);
+  const [editedJsonString, setEditedJsonString] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [editError, setEditError] = useState<string | null>(null); // Specific error for manual edit validation
+  const [editError, setEditError] = useState<string | null>(null);
   const { toast } = useToast();
 
   // --- Relationship State ---
   const [relationships, setRelationships] = useState<RelationshipEntry[]>([]);
+  const [relatedData, setRelatedData] = useState<DataEntry[]>([]); // State to store full related data
   const [isLoadingRelationships, startLoadingRelationshipsTransition] = useTransition();
+  const [isLoadingRelatedData, startLoadingRelatedDataTransition] = useTransition();
   const [relationshipError, setRelationshipError] = useState<string | null>(null);
   const [targetEntryId, setTargetEntryId] = useState<string>('');
   const [isAddingRelationship, startAddingRelationshipTransition] = useTransition();
+  const [relatedHeaders, setRelatedHeaders] = useState<string[]>([]); // State for table headers
+  const [isEditingHeaders, setIsEditingHeaders] = useState(false); // State for header editing mode
+  const [tempHeaders, setTempHeaders] = useState<string[]>([]); // Temporary headers during edit
   // --- End Relationship State ---
 
   // --- Fetch Relationships ---
-  useEffect(() => {
-    setRelationshipError(null);
-    startLoadingRelationshipsTransition(async () => {
-      try {
-        const result = await getRelationshipsAction(entryId);
-        if (result.success) {
-          setRelationships(result.data as RelationshipEntry[]);
-        } else {
-          setRelationshipError(result.error || 'Failed to load relationships.');
-        }
-      } catch (e) {
-        const message = e instanceof Error ? e.message : 'An unexpected error occurred while fetching relationships.';
-        setRelationshipError(message);
-      }
-    });
-  }, [entryId]); // Refetch when entryId changes
-  // --- End Fetch Relationships ---
+  const fetchRelationships = useCallback(() => {
+     setRelationshipError(null);
+     startLoadingRelationshipsTransition(async () => {
+       try {
+         const result = await getRelationshipsAction(entryId);
+         if (result.success && Array.isArray(result.data)) {
+           setRelationships(result.data);
+           // Extract target IDs and fetch their full data
+           const targetIds = result.data.map((rel: RelationshipEntry) => rel.target_entry_id);
+           if (targetIds.length > 0) {
+               fetchRelatedData(targetIds);
+           } else {
+               setRelatedData([]); // Clear related data if no relationships
+               setRelatedHeaders([]); // Clear headers
+           }
+         } else {
+           setRelationshipError(result.error || 'Failed to load relationships.');
+           setRelationships([]);
+           setRelatedData([]);
+           setRelatedHeaders([]);
+         }
+       } catch (e) {
+         const message = e instanceof Error ? e.message : 'An unexpected error occurred while fetching relationships.';
+         setRelationshipError(message);
+         setRelationships([]);
+         setRelatedData([]);
+         setRelatedHeaders([]);
+       }
+     });
+   }, [entryId]); // Depend on entryId
 
+   // Initial fetch on component mount
+   useEffect(() => {
+       fetchRelationships();
+   }, [fetchRelationships]);
+   // --- End Fetch Relationships ---
+
+   // --- Fetch Related Data ---
+   const fetchRelatedData = (targetIds: (string | number)[]) => {
+       startLoadingRelatedDataTransition(async () => {
+            try {
+                const result = await getDataByIdsAction(targetIds);
+                if (result.success && Array.isArray(result.data)) {
+                    setRelatedData(result.data);
+                    // Determine headers from the fetched related data
+                    const allKeys = result.data.reduce((keys, entry) => {
+                        Object.keys(entry).forEach(key => keys.add(key));
+                        return keys;
+                    }, new Set<string>());
+
+                    let headers = Array.from(allKeys);
+                    if (headers.includes('id')) {
+                        headers = ['id', ...headers.filter(h => h !== 'id')];
+                    }
+                     // Filter out complex objects/arrays from direct display for simplicity initially
+                    const simpleHeaders = headers.filter(header => {
+                        if (result.data.length > 0) {
+                            const firstValue = result.data[0][header];
+                            return typeof firstValue !== 'object' || firstValue === null;
+                        }
+                        return true;
+                    });
+                    setRelatedHeaders(simpleHeaders);
+                    setTempHeaders(simpleHeaders); // Initialize temp headers
+
+                } else {
+                    setRelationshipError(result.error || 'Failed to load data for related entries.');
+                    setRelatedData([]);
+                    setRelatedHeaders([]);
+                }
+            } catch(e) {
+                 const message = e instanceof Error ? e.message : 'An unexpected error occurred while fetching related data.';
+                 setRelationshipError(message);
+                 setRelatedData([]);
+                 setRelatedHeaders([]);
+            }
+       });
+   }
+   // --- End Fetch Related Data ---
 
   const handleCleanData = () => {
     setError(null);
     setEditError(null);
-    setCleanedDataSuggestion(null); // Clear previous suggestion
+    setCleanedDataSuggestion(null);
     startCleaningTransition(async () => {
       try {
         const result = await cleanDataAction(entryId);
@@ -109,12 +181,13 @@ export function DataDetailView({ initialData, entryId }: DataDetailViewProps) {
         try {
             const result = await updateDataAction(entryId, cleanedDataSuggestion);
              if (result.success) {
-                setCurrentData(cleanedDataSuggestion); // Update local state to reflect saved changes
-                setCleanedDataSuggestion(null); // Clear the suggestion box
+                setCurrentData(cleanedDataSuggestion);
+                setCleanedDataSuggestion(null);
                 toast({
                     title: 'Success',
                     description: result.message || 'Data updated successfully.',
                 });
+                 // No need to re-fetch relationships here unless the update impacts them
             } else {
                  setError(result.error || 'Failed to update data.');
                  toast({
@@ -141,7 +214,6 @@ export function DataDetailView({ initialData, entryId }: DataDetailViewProps) {
           const updatedSuggestion = JSON.parse(event.target.value);
           setCleanedDataSuggestion(updatedSuggestion);
       } catch (e) {
-          // Handle JSON parse error if needed, maybe show a small inline error
           console.warn("Invalid JSON in suggestion textarea");
       }
   };
@@ -150,9 +222,9 @@ export function DataDetailView({ initialData, entryId }: DataDetailViewProps) {
   const handleEditClick = () => {
     setIsEditing(true);
     setEditedJsonString(JSON.stringify(currentData, null, 2));
-    setEditError(null); // Clear previous edit errors
-    setError(null); // Clear general errors
-    setCleanedDataSuggestion(null); // Clear AI suggestion when starting manual edit
+    setEditError(null);
+    setError(null);
+    setCleanedDataSuggestion(null);
   };
 
   const handleCancelEdit = () => {
@@ -163,7 +235,7 @@ export function DataDetailView({ initialData, entryId }: DataDetailViewProps) {
 
   const handleEditChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
     setEditedJsonString(event.target.value);
-    setEditError(null); // Clear error on change
+    setEditError(null);
   };
 
   const handleSaveChanges = () => {
@@ -189,18 +261,16 @@ export function DataDetailView({ initialData, entryId }: DataDetailViewProps) {
 
     startSavingTransition(async () => {
         try {
-            // Ensure ID is not overwritten if present in edited data
             const dataToSave = { ...parsedData };
-            // delete dataToSave.id; // Let the backend handle ID consistency
-
             const result = await updateDataAction(entryId, dataToSave);
             if (result.success) {
-                setCurrentData({ ...dataToSave, id: currentData.id }); // Update local state with saved data, keeping original ID
-                setIsEditing(false); // Exit edit mode
+                setCurrentData({ ...dataToSave, id: currentData.id });
+                setIsEditing(false);
                 toast({
                     title: 'Success',
                     description: result.message || 'Data updated successfully.',
                 });
+                 // No need to re-fetch relationships here unless the update impacts them
             } else {
                 setError(result.error || 'Failed to update data.');
                 toast({
@@ -234,13 +304,14 @@ export function DataDetailView({ initialData, entryId }: DataDetailViewProps) {
         startAddingRelationshipTransition(async () => {
              try {
                  const result = await addRelationshipAction(entryId, targetEntryId.trim());
-                 if (result.success) {
-                     setRelationships(prev => [...prev, result.data as RelationshipEntry]);
+                 if (result.success && result.data) {
                      setTargetEntryId(''); // Clear input on success
                      toast({
                          title: 'Success',
                          description: result.message || 'Relationship added successfully.',
                      });
+                     // Re-fetch relationships and related data to update the table
+                     fetchRelationships();
                  } else {
                      setRelationshipError(result.error || 'Failed to add relationship.');
                      toast({
@@ -262,7 +333,6 @@ export function DataDetailView({ initialData, entryId }: DataDetailViewProps) {
         });
    };
 
-   // Placeholder for delete relationship functionality if needed later
    const handleDeleteRelationship = (relationshipId: number | string) => {
         console.warn(`Delete relationship functionality not implemented yet (ID: ${relationshipId})`);
          toast({
@@ -270,22 +340,40 @@ export function DataDetailView({ initialData, entryId }: DataDetailViewProps) {
             title: 'Not Implemented',
             description: 'Deleting relationships is not yet supported.',
         });
-        // Example structure:
-        // startDeletingRelationshipTransition(async () => {
-        //      const result = await deleteRelationshipAction(relationshipId);
-        //      if (result.success) {
-        //          setRelationships(prev => prev.filter(rel => rel.id !== relationshipId));
-        //          toast(...);
-        //      } else { ... }
-        // });
    };
-
    // --- End Relationship Handlers ---
+
+  // --- Header Editing Handlers ---
+  const handleEditHeadersClick = () => {
+    setTempHeaders([...relatedHeaders]); // Copy current headers to temp state
+    setIsEditingHeaders(true);
+  };
+
+  const handleCancelHeaderEdit = () => {
+    setIsEditingHeaders(false);
+    setTempHeaders([]); // Clear temp headers
+  };
+
+  const handleHeaderInputChange = (index: number, value: string) => {
+    const newTempHeaders = [...tempHeaders];
+    newTempHeaders[index] = value;
+    setTempHeaders(newTempHeaders);
+  };
+
+  const handleSaveHeaders = () => {
+    setRelatedHeaders(tempHeaders); // Apply the edited headers
+    setIsEditingHeaders(false);
+     toast({
+      title: 'Headers Updated',
+      description: 'Related data table headers have been updated for this view.',
+    });
+  };
+  // --- End Header Editing Handlers ---
 
 
   return (
     <div className="space-y-6">
-      {error && !isEditing && ( // Only show general error if not in edit mode
+      {error && !isEditing && (
          <Alert variant="destructive">
            <AlertTitle>Error</AlertTitle>
            <AlertDescription>{error}</AlertDescription>
@@ -327,30 +415,20 @@ export function DataDetailView({ initialData, entryId }: DataDetailViewProps) {
                  {isEditing ? (
                     <div className="flex gap-2">
                         <Button onClick={handleSaveChanges} disabled={isSaving || !!editError}>
-                           {isSaving ? (
-                             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                           ) : (
-                             <Save className="mr-2 h-4 w-4" />
-                           )}
+                           {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
                            {isSaving ? 'Saving...' : 'Save Changes'}
                          </Button>
                          <Button variant="outline" onClick={handleCancelEdit} disabled={isSaving}>
-                             <XCircle className="mr-2 h-4 w-4"/>
-                             Cancel
+                             <XCircle className="mr-2 h-4 w-4"/> Cancel
                          </Button>
                     </div>
                  ) : (
                     <div className="flex gap-2">
-                        <Button onClick={handleEditClick} disabled={isCleaning || isSaving}>
-                             <Edit className="mr-2 h-4 w-4" />
-                             Edit
+                        <Button onClick={handleEditClick} disabled={isCleaning || isSaving || isAddingRelationship || isLoadingRelatedData || isLoadingRelationships}>
+                             <Edit className="mr-2 h-4 w-4" /> Edit
                          </Button>
-                         <Button onClick={handleCleanData} disabled={isCleaning || isSaving || isAddingRelationship}>
-                           {isCleaning ? (
-                             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                           ) : (
-                             <Sparkles className="mr-2 h-4 w-4" />
-                           )}
+                         <Button onClick={handleCleanData} disabled={isCleaning || isSaving || isAddingRelationship || isLoadingRelatedData || isLoadingRelationships}>
+                           {isCleaning ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
                            {isCleaning ? 'Cleaning...' : 'Clean Data with AI'}
                          </Button>
                     </div>
@@ -388,22 +466,37 @@ export function DataDetailView({ initialData, entryId }: DataDetailViewProps) {
                     Discard
                 </Button>
                  <Button onClick={handleApplySuggestion} disabled={isSaving}>
-                   {isSaving ? (
-                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                   ) : (
-                     <Save className="mr-2 h-4 w-4" />
-                   )}
+                   {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
                    {isSaving ? 'Applying...' : 'Apply Suggestion'}
                  </Button>
            </CardFooter>
         </Card>
       )}
 
-      {/* Relationships Card */}
+      {/* Related Data Entries Card */}
       <Card>
         <CardHeader>
-            <CardTitle>Related Data Entries</CardTitle>
-            <CardDescription>Define and view relationships between this data entry (ID: {entryId}) and others.</CardDescription>
+            <div className="flex justify-between items-start">
+                <div>
+                    <CardTitle>Related Data Entries</CardTitle>
+                    <CardDescription>Define relationships and view details of linked entries (Source ID: {entryId}).</CardDescription>
+                </div>
+                {relatedData.length > 0 && !isEditingHeaders && (
+                     <Button variant="outline" size="sm" onClick={handleEditHeadersClick} disabled={isLoadingRelationships || isLoadingRelatedData}>
+                        <Columns3 className="mr-2 h-4 w-4" /> Edit Headers
+                     </Button>
+                )}
+                {isEditingHeaders && (
+                    <div className="flex gap-2">
+                        <Button variant="outline" size="sm" onClick={handleCancelHeaderEdit}>
+                           <XCircle className="mr-2 h-4 w-4"/> Cancel
+                        </Button>
+                         <Button size="sm" onClick={handleSaveHeaders}>
+                           <CheckSquare className="mr-2 h-4 w-4"/> Save Headers
+                        </Button>
+                    </div>
+                )}
+            </div>
         </CardHeader>
         <CardContent className="space-y-4">
              {relationshipError && (
@@ -425,71 +518,84 @@ export function DataDetailView({ initialData, entryId }: DataDetailViewProps) {
                         disabled={isAddingRelationship}
                     />
                 </div>
-                 <Button onClick={handleAddRelationship} disabled={isAddingRelationship || isLoadingRelationships}>
-                    {isAddingRelationship ? (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                        <Plus className="mr-2 h-4 w-4" />
-                    )}
+                 <Button onClick={handleAddRelationship} disabled={isAddingRelationship || isLoadingRelationships || isLoadingRelatedData}>
+                    {isAddingRelationship ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
                     {isAddingRelationship ? 'Adding...' : 'Add Relationship'}
                  </Button>
              </div>
 
-             {/* Relationships Table */}
-             <div className="border rounded-md">
+             {/* Related Data Table */}
+            <ScrollArea className="border rounded-md">
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Target Entry ID</TableHead>
-                      <TableHead>Relationship ID</TableHead>
-                      <TableHead>Created At</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
+                        {isEditingHeaders ? (
+                            tempHeaders.map((header, index) => (
+                                <TableHead key={`edit-header-${index}`}>
+                                    <Input
+                                        value={header}
+                                        onChange={(e) => handleHeaderInputChange(index, e.target.value)}
+                                        className="h-8 text-sm"
+                                        placeholder="Header Name"
+                                    />
+                                </TableHead>
+                            ))
+                        ) : (
+                            relatedHeaders.map((header) => (
+                                <TableHead key={header} className="whitespace-nowrap">
+                                    {header.charAt(0).toUpperCase() + header.slice(1)}
+                                </TableHead>
+                            ))
+                        )}
+                        {!isEditingHeaders && <TableHead className="text-right">Actions</TableHead>}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {isLoadingRelationships ? (
+                    {(isLoadingRelationships || isLoadingRelatedData) ? (
                        <TableRow>
-                            <TableCell colSpan={4} className="h-24 text-center">
+                            <TableCell colSpan={relatedHeaders.length + 1} className="h-24 text-center">
                                 <Loader2 className="mx-auto h-6 w-6 animate-spin text-muted-foreground" />
-                                <p className="mt-2 text-muted-foreground">Loading relationships...</p>
+                                <p className="mt-2 text-muted-foreground">Loading related data...</p>
                             </TableCell>
                         </TableRow>
-                    ) : relationships.length > 0 ? (
-                      relationships.map((rel) => (
-                        <TableRow key={rel.id}>
-                          <TableCell>
-                             <Link href={`/data/${rel.target_entry_id}`} className="underline hover:text-primary">
-                                {rel.target_entry_id}
-                             </Link>
-                          </TableCell>
-                          <TableCell>{rel.id}</TableCell>
-                          <TableCell>{rel.created_at ? new Date(rel.created_at).toLocaleString() : 'N/A'}</TableCell>
-                          <TableCell className="text-right">
-                            {/* Placeholder for future delete action */}
-                            {/* <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => handleDeleteRelationship(rel.id!)} // Add delete handler
-                                disabled={true} // Enable when implemented
-                                aria-label="Delete relationship"
-                                className="text-destructive hover:text-destructive"
-                            >
-                                <Trash2 className="h-4 w-4" />
-                            </Button> */}
-                             <span className="text-xs text-muted-foreground italic">Delete N/A</span>
-                          </TableCell>
+                    ) : relatedData.length > 0 ? (
+                      relatedData.map((entry) => (
+                        <TableRow key={entry.id}>
+                           {relatedHeaders.map((header) => (
+                               <TableCell key={`${entry.id}-${header}`} className="whitespace-nowrap max-w-[200px] truncate">
+                                    {typeof entry[header] === 'object' && entry[header] !== null
+                                     ? JSON.stringify(entry[header])
+                                     : String(entry[header] ?? '')}
+                                </TableCell>
+                            ))}
+                           <TableCell className="text-right">
+                               <Button variant="ghost" size="sm" asChild>
+                                  <Link href={`/data/${entry.id}`} target="_blank" rel="noopener noreferrer">
+                                    View
+                                  </Link>
+                                </Button>
+                                {/* Future delete relationship button placeholder */}
+                                {/* <Button variant="ghost" size="icon" disabled> <Trash2 className="h-4 w-4 text-destructive"/> </Button> */}
+                            </TableCell>
                         </TableRow>
                       ))
-                    ) : (
+                    ) : relationships.length > 0 ? (
+                        <TableRow>
+                             <TableCell colSpan={relatedHeaders.length + 1} className="h-24 text-center text-muted-foreground">
+                                Related entry data not found or failed to load.
+                             </TableCell>
+                        </TableRow>
+                     ) : (
                       <TableRow>
-                        <TableCell colSpan={4} className="h-24 text-center">
-                          No relationships found for this entry.
+                        <TableCell colSpan={relatedHeaders.length + 1} className="h-24 text-center">
+                          No relationships defined for this entry yet.
                         </TableCell>
                       </TableRow>
                     )}
                   </TableBody>
                 </Table>
-             </div>
+                <ScrollBar orientation="horizontal" />
+            </ScrollArea>
         </CardContent>
       </Card>
     </div>
