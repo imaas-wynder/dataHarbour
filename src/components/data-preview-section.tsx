@@ -1,12 +1,11 @@
 // src/components/data-preview-section.tsx
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useEffect } from "react"; // Added useEffect
 import { useRouter } from "next/navigation";
 import { RefreshCw, Filter, X } from "lucide-react"; // Added Filter and X icons
 
 import type { DataEntry, RelationshipEntry } from "@/services/database"; // Import RelationshipEntry
-import { getRelationshipsAction } from "@/actions/data-actions"; // Import relationship action
 import { DataPreviewTable } from "@/components/data-preview-table";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -29,16 +28,31 @@ export function DataPreviewSection({ initialData, initialRelationships, error: i
   const [filterError, setFilterError] = useState<string | null>(null);
   const [filterSourceId, setFilterSourceId] = useState<string>('');
   const [displayedData, setDisplayedData] = useState<DataEntry[]>(initialData); // State for data shown in table
-  // Use initial relationships, could potentially update this state if needed
-  const [currentRelationships] = useState<RelationshipEntry[]>(initialRelationships);
+  // Use initialRelationships directly, removing the need for separate state management here.
   const { toast } = useToast();
+
+  // Update displayedData when initialData prop changes (e.g., after refresh or adding new data)
+  // This useEffect ensures that if the parent component re-renders with new 'initialData',
+  // the 'displayedData' state reflects these changes, especially after clearing filters.
+  useEffect(() => {
+    // Only reset displayedData if no filter is active
+    if (!filterSourceId) {
+      setDisplayedData(initialData);
+    }
+    // Clear general error if initialError is null (indicating successful fetch)
+    if (initialError === null) {
+        setError(null);
+    } else {
+        setError(initialError);
+    }
+   }, [initialData, initialError, filterSourceId]); // Depend on initialData, initialError, and filterSourceId
+
 
   const handleRefresh = () => {
     setError(null); // Clear previous errors on refresh attempt
     setFilterError(null); // Clear filter error
     setFilterSourceId(''); // Clear filter input
-    // Don't reset displayedData here, let router.refresh handle fetching updated data
-    // setDisplayedData(initialData); // This would show stale data immediately
+    // Trigger refresh - this will cause the parent page to re-fetch and pass new props
     startRefreshTransition(() => {
       try {
         router.refresh(); // Re-fetches data & relationships for the current route (page.tsx)
@@ -46,7 +60,7 @@ export function DataPreviewSection({ initialData, initialRelationships, error: i
           title: "Data Refreshed",
           description: "The data preview has been updated.",
         });
-        // Note: displayedData will update when the parent component re-renders with new props
+        // Note: displayedData will update via the useEffect when new initialData prop is received
       } catch (e) {
         console.error("Refresh failed:", e);
         const errorMessage = e instanceof Error ? e.message : "Failed to refresh data.";
@@ -60,16 +74,6 @@ export function DataPreviewSection({ initialData, initialRelationships, error: i
     });
   };
 
-   // Update displayedData when initialData prop changes (e.g., after refresh)
-   useState(() => {
-    setDisplayedData(initialData);
-   // Note: This useState initializer runs only once.
-   // For updates after refresh, we rely on the parent re-rendering
-   // and passing down the *new* initialData, which resets the state here.
-   // This is okay because this component is part of the page structure that gets refreshed.
-   // If this were a more isolated component, useEffect with dependency on initialData would be better.
-   }, [initialData]); // Re-run if initialData changes
-
 
   const handleApplyFilter = () => {
     if (!filterSourceId.trim()) {
@@ -81,13 +85,28 @@ export function DataPreviewSection({ initialData, initialRelationships, error: i
     setFilterError(null);
     startFilteringTransition(async () => {
       try {
-        // Use the existing relationships state for filtering, no need to fetch again unless needed
+        // Use the initialRelationships prop directly for filtering
         const sourceIdStr = filterSourceId.trim();
         const targetIds = new Set(
-            currentRelationships
+            initialRelationships // Use the prop directly
             .filter(rel => String(rel.source_entry_id) === sourceIdStr)
             .map(rel => String(rel.target_entry_id))
         );
+
+        // Always filter based on the initialData prop to ensure consistency
+        const sourceExists = initialData.some(entry => String(entry.id) === sourceIdStr);
+
+        if (!sourceExists) {
+            setFilterError(`Source entry ID ${sourceIdStr} not found in the current dataset.`);
+            toast({
+                variant: "destructive",
+                title: "Filter Error",
+                description: `Source entry ID ${sourceIdStr} does not exist.`,
+            });
+            setDisplayedData([]); // Show empty table
+            return; // Stop further processing
+        }
+
 
         if (targetIds.size > 0) {
              const filteredResults = initialData.filter(entry => targetIds.has(String(entry.id)));
@@ -97,24 +116,13 @@ export function DataPreviewSection({ initialData, initialRelationships, error: i
                description: `Showing ${filteredResults.length} entries related to source ID ${sourceIdStr}.`,
              });
         } else {
-             // Check if the source ID even exists in the data
-             const sourceExists = initialData.some(entry => String(entry.id) === sourceIdStr);
-             if (sourceExists) {
-                 setFilterError(`No relationships found originating from source ID ${sourceIdStr}.`);
-                 toast({
-                    variant: "default", // Use default variant for "not found"
-                    title: "Filter Applied",
-                    description: `No entries related to source ID ${sourceIdStr}.`,
-                 });
-             } else {
-                  setFilterError(`Source entry ID ${sourceIdStr} not found in the current dataset.`);
-                  toast({
-                    variant: "destructive",
-                    title: "Filter Error",
-                    description: `Source entry ID ${sourceIdStr} does not exist.`,
-                  });
-             }
-
+             // Source exists, but no relationships found
+             setFilterError(`No relationships found originating from source ID ${sourceIdStr}.`);
+             toast({
+                variant: "default", // Use default variant for "not found"
+                title: "Filter Applied",
+                description: `No entries related to source ID ${sourceIdStr}.`,
+             });
              setDisplayedData([]); // Show empty table
         }
 
@@ -135,7 +143,7 @@ export function DataPreviewSection({ initialData, initialRelationships, error: i
   const handleClearFilter = () => {
     setFilterSourceId('');
     setFilterError(null);
-    setDisplayedData(initialData); // Reset to show all initial data
+    setDisplayedData(initialData); // Reset to show all initial data from props
     toast({
       title: "Filter Cleared",
       description: "Showing all data entries.",
@@ -205,11 +213,14 @@ export function DataPreviewSection({ initialData, initialRelationships, error: i
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         ) : (
-           // Pass displayedData and currentRelationships to the table
-          <DataPreviewTable data={displayedData} relationships={currentRelationships} />
+           // Pass displayedData and initialRelationships (from props) to the table
+           // displayedData reflects filtering based on initialData
+           // initialRelationships provides the source of truth for relationship lookups in the table
+          <DataPreviewTable data={displayedData} relationships={initialRelationships} />
         )}
         {(isRefreshing || isFiltering) && <p className="text-muted-foreground text-sm mt-2">{isRefreshing ? 'Refreshing data...' : 'Applying filter...'}</p>}
       </CardContent>
     </Card>
   );
 }
+
