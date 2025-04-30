@@ -18,23 +18,31 @@ export interface RelationshipEntry {
 }
 
 
-// Simulated database store
+// Simulated database store (IN-MEMORY)
+// IMPORTANT: This is an in-memory simulation. Data added here will be lost
+// whenever the server restarts (e.g., during development when files change and
+// hot-reloading occurs, or when the server process is stopped and started).
+// For persistent storage, a real database connection (like PostgreSQL) is required.
 let simulatedDatabase: DataEntry[] = [
    { id: 1, name: 'Simulated Example Data', value: 123, timestamp: new Date().toISOString(), details: 'Some initial details' },
    { id: 2, name: 'Another Simulated Entry', value: 456, category: 'Test', timestamp: new Date().toISOString(), email: ' test@example.com ', inconsistent_value: ' yes '},
    { id: 3, complex: { nested: true, arr: [1, 2] }, description: 'Complex object example', timestamp: new Date().toISOString(), status: 'pending' },
  ];
 let nextId = 4;
-let simulatedRelationships: RelationshipEntry[] = []; // Added simulated store for relationships
+// Simulated store for relationships (IN-MEMORY)
+// Same persistence limitations apply as for simulatedDatabase.
+let simulatedRelationships: RelationshipEntry[] = [];
 let nextRelationshipId = 1;
 
 /**
  * Asynchronously adds a data entry to the simulated database.
+ * This function correctly adds data to the in-memory array for the *current*
+ * server session. However, the data will be lost if the server restarts.
  *
  * @param data The data entry to add.
  * @returns A promise that resolves to true if the operation was successful, false otherwise.
  */
-export async function addData(data: DataEntry): Promise<boolean> {
+export async function addData(data: DataEntry | DataEntry[]): Promise<boolean> {
   console.log('addData service called with:', data);
   try {
     // Simulate potential failure for demonstration
@@ -44,14 +52,19 @@ export async function addData(data: DataEntry): Promise<boolean> {
     if (success) {
        console.log('Simulated success in addData for:', data);
        if (Array.isArray(data)) {
+        // Add each entry in the array
         data.forEach(entry => {
           const newEntry = { ...entry, id: entry.id ?? nextId++ };
           simulatedDatabase.push(newEntry);
+          console.log('Added entry:', newEntry);
         });
        } else {
+         // Add single entry
          const newEntry = { ...data, id: data.id ?? nextId++ };
          simulatedDatabase.push(newEntry);
+         console.log('Added entry:', newEntry);
        }
+       console.log('Current simulated DB size:', simulatedDatabase.length);
        return true;
     } else {
        console.warn('Simulated failure in addData for:', data);
@@ -65,6 +78,7 @@ export async function addData(data: DataEntry): Promise<boolean> {
 
 /**
  * Asynchronously fetches all data entries from the simulated database.
+ * Retrieves data currently held in the in-memory store for the active server session.
  *
  * @returns A promise that resolves to an array of DataEntry objects.
  * @throws {Error} If the operation fails.
@@ -72,9 +86,9 @@ export async function addData(data: DataEntry): Promise<boolean> {
 export async function getAllData(): Promise<DataEntry[]> {
    console.log('getAllData service called');
   try {
-     console.log('Returning simulated data from getAllData');
+     console.log('Returning current simulated data from getAllData. Count:', simulatedDatabase.length);
      await new Promise(resolve => setTimeout(resolve, 300)); // Simulate network delay
-     // Return a deep copy to prevent direct mutation
+     // Return a deep copy to prevent direct mutation of the simulated store
      return JSON.parse(JSON.stringify(simulatedDatabase));
    } catch (error) {
      console.error('Error in getAllData service:', error);
@@ -87,6 +101,7 @@ export async function getAllData(): Promise<DataEntry[]> {
 
 /**
  * Asynchronously fetches a single data entry by its ID from the simulated database.
+ * Retrieves data currently held in the in-memory store for the active server session.
  *
  * @param id The ID of the data entry to fetch.
  * @returns A promise that resolves to the DataEntry object or null if not found.
@@ -117,6 +132,8 @@ export async function getDataById(id: number | string): Promise<DataEntry | null
 
 /**
  * Asynchronously updates a data entry by its ID in the simulated database.
+ * Updates data currently held in the in-memory store for the active server session.
+ * Changes will be lost if the server restarts.
  *
  * @param id The ID of the data entry to update.
  * @param updatedData The partial or full data to update the entry with.
@@ -149,7 +166,8 @@ export async function updateDataById(id: number | string, updatedData: Partial<D
 }
 
 /**
- * Asynchronously adds a relationship between two data entries.
+ * Asynchronously adds a relationship between two data entries in the simulated store.
+ * Relationships added here are in-memory and will be lost on server restart.
  *
  * @param sourceEntryId The ID of the source entry.
  * @param targetEntryId The ID of the target entry to relate.
@@ -161,12 +179,12 @@ export async function addRelationship(sourceEntryId: number | string, targetEntr
     try {
         await new Promise(resolve => setTimeout(resolve, 100)); // Simulate network delay
 
-        // Basic validation: check if source and target entries exist (optional, but good practice)
+        // Basic validation: check if source and target entries exist in the current in-memory store
         const sourceExists = simulatedDatabase.some(entry => String(entry.id) === String(sourceEntryId));
         const targetExists = simulatedDatabase.some(entry => String(entry.id) === String(targetEntryId));
 
         if (!sourceExists || !targetExists) {
-            console.warn(`Cannot add relationship: Source (${sourceEntryId}) or Target (${targetEntryId}) entry does not exist.`);
+            console.warn(`Cannot add relationship: Source (${sourceEntryId}) or Target (${targetEntryId}) entry does not exist in current session.`);
             return null; // Indicate failure due to non-existent entries
         }
 
@@ -178,7 +196,8 @@ export async function addRelationship(sourceEntryId: number | string, targetEntr
 
         if (existingRelationship) {
             console.warn(`Relationship from ${sourceEntryId} to ${targetEntryId} already exists.`);
-            return existingRelationship; // Return existing one or null, depending on desired behavior
+            // Return existing one or null, depending on desired behavior. Returning existing for idempotency.
+            return JSON.parse(JSON.stringify(existingRelationship));
         }
 
         // Prevent self-referencing relationships
@@ -196,6 +215,7 @@ export async function addRelationship(sourceEntryId: number | string, targetEntr
         };
         simulatedRelationships.push(newRelationship);
         console.log('Added new relationship:', newRelationship);
+        console.log('Current simulated relationships count:', simulatedRelationships.length);
         return JSON.parse(JSON.stringify(newRelationship)); // Return a copy
     } catch (error) {
         console.error(`Error in addRelationship service for ${sourceEntryId} -> ${targetEntryId}:`, error);
@@ -207,10 +227,11 @@ export async function addRelationship(sourceEntryId: number | string, targetEntr
 }
 
 /**
- * Asynchronously fetches all relationships originating from a specific source entry ID.
+ * Asynchronously fetches all relationships originating from a specific source entry ID
+ * from the simulated in-memory store.
  *
  * @param sourceEntryId The ID of the source entry.
- * @returns A promise that resolves to an array of RelationshipEntry objects.
+ * @returns A promise that resolves to an array of RelationshipEntry objects found in the current session.
  * @throws {Error} If the operation fails.
  */
 export async function getRelationshipsBySourceId(sourceEntryId: number | string): Promise<RelationshipEntry[]> {
@@ -231,6 +252,7 @@ export async function getRelationshipsBySourceId(sourceEntryId: number | string)
     }
 }
 
-// NOTE: In a real application, you would add functions to initialize the
-// relationships table (e.g., CREATE TABLE IF NOT EXISTS data_relationships...).
-// For this simulation, we just use the in-memory array `simulatedRelationships`.
+// NOTE: In a real application, you would replace these functions with actual
+// database operations (e.g., SQL queries for PostgreSQL). The in-memory arrays
+// (`simulatedDatabase`, `simulatedRelationships`, `nextId`, `nextRelationshipId`)
+// would be removed.
