@@ -1,4 +1,3 @@
-{// src/app/data/[id]/page.tsx
 import { notFound } from 'next/navigation';
 import { getDataById } from '@/services/database'; // Removed getRelationshipsBySourceId import as relationships are handled client-side
 import { DataDetailView } from '@/components/data-detail-view';
