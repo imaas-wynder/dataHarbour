@@ -36,12 +36,12 @@ export function DataPreviewTable({ data, relationships }: DataPreviewTableProps)
   }
   // Exclude complex objects/arrays from direct display for simplicity
   const simpleHeaders = headers.filter(header => {
-      if (data.length > 0) {
+      if (data.length > 0 && data[0] && typeof data[0] === 'object') {
         const firstValue = data[0][header];
         // Allow null, but exclude complex objects/arrays
         return typeof firstValue !== 'object' || firstValue === null;
       }
-      return true; // Show header if no data yet
+      return true; // Show header if no data yet or data structure is unexpected
   });
 
   // Add an "Actions" header and "Relationships" header after "id"
@@ -56,15 +56,15 @@ export function DataPreviewTable({ data, relationships }: DataPreviewTableProps)
   };
 
   return (
-    <ScrollArea className="rounded-md border">
-      <Table>
+    <ScrollArea className="rounded-md border w-full">
+      <Table className="min-w-full"> {/* Ensure table can expand */}
         <TableCaption>
           {data.length === 0 ? "No data available matching the current criteria." : "A preview of the current data. Click 'View / Clean' to see details."}
         </TableCaption>
         <TableHeader>
           <TableRow>
             {displayHeaders.map((header) => (
-              <TableHead key={header} className="whitespace-nowrap">
+              <TableHead key={header} className="whitespace-nowrap sticky top-0 bg-background z-10"> {/* Make headers sticky */}
                 {header === 'Actions' ? header : (header.charAt(0).toUpperCase() + header.slice(1))}
               </TableHead>
             ))}
