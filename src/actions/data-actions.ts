@@ -159,36 +159,40 @@ export async function getDataByIdsAction(ids: (number | string)[]): Promise<Acti
 // --- Relationship Actions ---
 
 export async function addRelationshipAction(sourceId: number | string, targetId: number | string): Promise<ActionResult> {
-    console.log(`Server Action: Received request to add relationship: ${sourceId} -> ${targetId}`);
+    const sourceIdStr = String(sourceId);
+    const targetIdStr = String(targetId);
+    console.log(`Server Action: Received request to add relationship: ${sourceIdStr} -> ${targetIdStr}`);
     try {
         // Validate IDs are not the same before calling service
-        if (String(sourceId) === String(targetId)) {
+        if (sourceIdStr === targetIdStr) {
+             console.warn(`Server Action: Attempted to add self-referencing relationship for ID ${sourceIdStr}.`);
              return { success: false, error: 'Cannot create a relationship with the same entry.' };
         }
 
-        const newRelationship = await addRelationship(sourceId, targetId);
+        // Call the service function with the IDs
+        const newRelationship = await addRelationship(sourceIdStr, targetIdStr);
 
         if (newRelationship) {
-            console.log("Server Action: Relationship added successfully.");
+            console.log("Server Action: Relationship added successfully by service. Returned:", newRelationship);
             // Revalidate the data detail page for the source ID to show the new relationship
-            revalidatePath(`/data/${sourceId}`);
+            revalidatePath(`/data/${sourceIdStr}`);
             // Revalidate the main page to potentially update the relationship display there
             revalidatePath('/');
             return { success: true, message: 'Relationship added successfully.', data: newRelationship };
         } else {
-             // Check if entries exist to provide a more specific error
-             const sourceExists = !!await getDataById(sourceId);
-             const targetExists = !!await getDataById(targetId);
-             let errorMsg = 'Failed to add relationship.';
-             if (!sourceExists) errorMsg = `Source entry with ID ${sourceId} not found.`;
-             else if (!targetExists) errorMsg = `Target entry with ID ${targetId} not found.`;
-             // Could also check for duplicates if addRelationship returns null for that reason
+             // Check if entries exist to provide a more specific error if service returns null
+             console.warn(`Server Action: addRelationship service returned null for ${sourceIdStr} -> ${targetIdStr}. Checking entry existence...`);
+             const sourceExists = !!await getDataById(sourceIdStr);
+             const targetExists = !!await getDataById(targetIdStr);
+             let errorMsg = 'Failed to add relationship. Possible duplicate or other issue in service layer.';
+             if (!sourceExists) errorMsg = `Source entry with ID ${sourceIdStr} not found.`;
+             else if (!targetExists) errorMsg = `Target entry with ID ${targetIdStr} not found.`;
 
-             console.error(`Server Action: Failed to add relationship ${sourceId} -> ${targetId}. ${errorMsg}`);
+             console.error(`Server Action: Failed to add relationship ${sourceIdStr} -> ${targetIdStr}. ${errorMsg}`);
              return { success: false, error: errorMsg };
         }
     } catch (error) {
-        console.error(`Server Action: Error adding relationship ${sourceId} -> ${targetId}:`, error);
+        console.error(`Server Action: Error adding relationship ${sourceIdStr} -> ${targetIdStr}:`, error);
         let errorMessage = 'An unexpected error occurred while adding the relationship.';
         if (error instanceof Error) {
             errorMessage = error.message;

@@ -52,33 +52,28 @@ let nextRelationshipId = 1; // Next ID for new relationships
  * @returns A promise that resolves to true if the operation was successful, false otherwise.
  */
 export async function addData(data: DataEntry | DataEntry[]): Promise<boolean> {
-  console.log('addData service called with:', data);
+  console.log('[addData Service] Called with:', JSON.stringify(data).substring(0, 100) + '...');
   try {
-    const success = true;
     await new Promise(resolve => setTimeout(resolve, 150)); // Simulate network delay
 
-    if (success) {
-       console.log('Simulated success in addData for:', data);
-       if (Array.isArray(data)) {
+    if (Array.isArray(data)) {
         data.forEach(entry => {
-          const newEntry = { ...entry, id: entry.id ?? nextId++ };
-          simulatedDatabase.push(newEntry);
-          console.log(`[addData] Added entry with ID: ${newEntry.id}`);
+            // Assign new ID only if one isn't provided
+            const newEntry = { ...entry, id: entry.id ?? nextId++ };
+            simulatedDatabase.push(newEntry);
+            console.log(`[addData Service] Added entry with ID: ${newEntry.id}`);
         });
-       } else {
-         const newEntry = { ...data, id: data.id ?? nextId++ };
-         simulatedDatabase.push(newEntry);
-         console.log(`[addData] Added entry with ID: ${newEntry.id}`);
-       }
-       console.log('[addData] Current simulated DB size:', simulatedDatabase.length);
-       console.log(`[addData] Current IDs in DB: [${simulatedDatabase.map(e => String(e.id)).join(', ')}]`);
-       return true;
     } else {
-       console.warn('Simulated failure in addData for:', data);
-       return false;
+        const newEntry = { ...data, id: data.id ?? nextId++ };
+        simulatedDatabase.push(newEntry);
+        console.log(`[addData Service] Added entry with ID: ${newEntry.id}`);
     }
+    console.log('[addData Service] Current simulated DB size:', simulatedDatabase.length);
+    console.log(`[addData Service] Current IDs in DB: [${simulatedDatabase.map(e => String(e.id)).join(', ')}]`);
+    return true;
+
   } catch (error) {
-    console.error('Error in addData service:', error);
+    console.error('[addData Service] Error:', error);
     return false;
   }
 }
@@ -91,13 +86,13 @@ export async function addData(data: DataEntry | DataEntry[]): Promise<boolean> {
  * @throws {Error} If the operation fails.
  */
 export async function getAllData(): Promise<DataEntry[]> {
-   console.log('getAllData service called');
+   console.log('[getAllData Service] Called');
   try {
-     console.log('Returning current simulated data from getAllData. Count:', simulatedDatabase.length);
+     console.log('[getAllData Service] Returning current simulated data. Count:', simulatedDatabase.length);
      await new Promise(resolve => setTimeout(resolve, 300)); // Simulate network delay
      return JSON.parse(JSON.stringify(simulatedDatabase));
    } catch (error) {
-     console.error('Error in getAllData service:', error);
+     console.error('[getAllData Service] Error:', error);
      if (error instanceof Error) {
        throw new Error(`Failed to fetch data: ${error.message}`);
      }
@@ -116,27 +111,26 @@ export async function getAllData(): Promise<DataEntry[]> {
  */
 export async function getDataById(id: number | string): Promise<DataEntry | null> {
   const searchId = String(id);
-  console.log(`[getDataById] Service called for ID: ${searchId}`);
-  console.log(`[getDataById] Current simulatedDatabase state before search (IDs): [${simulatedDatabase.map(e => String(e.id)).join(', ')}]`);
-  console.log(`[getDataById] Searching for ID: ${searchId} (Type: ${typeof searchId})`);
+  console.log(`[getDataById Service] Called for ID: ${searchId}`);
+  console.log(`[getDataById Service] Current simulatedDatabase state before search (IDs): [${simulatedDatabase.map(e => String(e.id)).join(', ')}]`);
   try {
     await new Promise(resolve => setTimeout(resolve, 100)); // Simulate network delay
 
     const entry = simulatedDatabase.find(entry => {
         const entryIdStr = String(entry.id);
-        console.log(`[getDataById] Comparing: Stored ID "${entryIdStr}" (Type: ${typeof entryIdStr}) vs Search ID "${searchId}" (Type: ${typeof searchId}) => Match: ${entryIdStr === searchId}`);
+        //console.log(`[getDataById Service] Comparing: Stored ID "${entryIdStr}" (Type: ${typeof entryIdStr}) vs Search ID "${searchId}" (Type: ${typeof searchId}) => Match: ${entryIdStr === searchId}`);
         return entryIdStr === searchId;
     });
 
     if (entry) {
-        console.log(`[getDataById] Found entry for ID ${searchId}:`, JSON.stringify(entry));
+        console.log(`[getDataById Service] Found entry for ID ${searchId}.`);
         return JSON.parse(JSON.stringify(entry));
     } else {
-        console.warn(`[getDataById] Entry not found for ID ${searchId}. Current DB IDs: [${simulatedDatabase.map(e => String(e.id)).join(', ')}]. This is expected if the server restarted (e.g., due to file changes/HMR) after the data was added, as the in-memory store was reset.`);
+        console.warn(`[getDataById Service] Entry not found for ID ${searchId}. Current DB IDs: [${simulatedDatabase.map(e => String(e.id)).join(', ')}]. This is expected if the server restarted after data was added.`);
         return null;
     }
   } catch (error) {
-    console.error(`[getDataById] Error fetching data for ID ${searchId}:`, error);
+    console.error(`[getDataById Service] Error fetching data for ID ${searchId}:`, error);
     if (error instanceof Error) {
       throw new Error(`Failed to fetch data for ID ${searchId}: ${error.message}`);
     }
@@ -154,23 +148,22 @@ export async function getDataById(id: number | string): Promise<DataEntry | null
  */
 export async function getDataByIds(ids: (number | string)[]): Promise<DataEntry[]> {
   const searchIds = ids.map(String); // Normalize all search IDs to strings
-  console.log(`[getDataByIds] Service called for IDs: [${searchIds.join(', ')}]`);
-  console.log(`[getDataByIds] Current simulatedDatabase state before search (IDs): [${simulatedDatabase.map(e => String(e.id)).join(', ')}]`);
+  console.log(`[getDataByIds Service] Called for IDs: [${searchIds.join(', ')}]`);
+  console.log(`[getDataByIds Service] Current simulatedDatabase state before search (IDs): [${simulatedDatabase.map(e => String(e.id)).join(', ')}]`);
   try {
     await new Promise(resolve => setTimeout(resolve, 150)); // Simulate network delay
 
     const entries = simulatedDatabase.filter(entry => {
         const entryIdStr = String(entry.id);
         const isIncluded = searchIds.includes(entryIdStr);
-        console.log(`[getDataByIds] Checking entry ID "${entryIdStr}": Included in [${searchIds.join(', ')}]? ${isIncluded}`);
+        // console.log(`[getDataByIds Service] Checking entry ID "${entryIdStr}": Included in [${searchIds.join(', ')}]? ${isIncluded}`);
         return isIncluded;
     });
 
-    console.log(`[getDataByIds] Found ${entries.length} entries for IDs [${searchIds.join(', ')}].`);
-    // Return deep copies
+    console.log(`[getDataByIds Service] Found ${entries.length} entries for IDs [${searchIds.join(', ')}].`);
     return JSON.parse(JSON.stringify(entries));
   } catch (error) {
-    console.error(`[getDataByIds] Error fetching data for IDs [${searchIds.join(', ')}]:`, error);
+    console.error(`[getDataByIds Service] Error fetching data for IDs [${searchIds.join(', ')}]:`, error);
     if (error instanceof Error) {
       throw new Error(`Failed to fetch data for multiple IDs: ${error.message}`);
     }
@@ -191,7 +184,7 @@ export async function getDataByIds(ids: (number | string)[]): Promise<DataEntry[
  */
 export async function updateDataById(id: number | string, updatedData: Partial<DataEntry>): Promise<boolean> {
     const updateId = String(id);
-    console.log(`updateDataById service called for ID: ${updateId} with data:`, updatedData);
+    console.log(`[updateDataById Service] Called for ID: ${updateId} with data:`, JSON.stringify(updatedData).substring(0, 100) + '...');
     try {
         await new Promise(resolve => setTimeout(resolve, 200)); // Simulate network delay
         const index = simulatedDatabase.findIndex(entry => String(entry.id) === updateId);
@@ -199,16 +192,16 @@ export async function updateDataById(id: number | string, updatedData: Partial<D
         if (index !== -1) {
             const currentEntry = simulatedDatabase[index];
             const dataToMerge = { ...updatedData };
-            delete dataToMerge.id;
+            delete dataToMerge.id; // Ensure we don't overwrite the ID with undefined if it was in updatedData
             simulatedDatabase[index] = { ...currentEntry, ...dataToMerge };
-            console.log('[updateDataById] Updated entry:', simulatedDatabase[index]);
+            console.log('[updateDataById Service] Successfully updated entry:', simulatedDatabase[index]);
             return true;
         } else {
-            console.warn(`[updateDataById] Entry not found for update (ID: ${updateId}). Current DB IDs: [${simulatedDatabase.map(e => String(e.id)).join(', ')}]`);
+            console.warn(`[updateDataById Service] Entry not found for update (ID: ${updateId}). Current DB IDs: [${simulatedDatabase.map(e => String(e.id)).join(', ')}]`);
             return false;
         }
     } catch (error) {
-        console.error(`Error in updateDataById service for ID ${updateId}:`, error);
+        console.error(`[updateDataById Service] Error for ID ${updateId}:`, error);
         if (error instanceof Error) {
             throw new Error(`Failed to update data for ID ${updateId}: ${error.message}`);
         }
@@ -225,39 +218,42 @@ export async function updateDataById(id: number | string, updatedData: Partial<D
  * @returns A promise that resolves to true if the replacement was successful, false otherwise.
  */
 export async function replaceDatabase(newData: DataEntry[]): Promise<boolean> {
-  console.log('replaceDatabase service called. New data count:', newData.length);
+  console.log('[replaceDatabase Service] Called. New data count:', newData.length);
   try {
     await new Promise(resolve => setTimeout(resolve, 250)); // Simulate delay
 
     let maxId = 0;
+    // Determine the highest numeric ID in the incoming data to set the nextId correctly
     newData.forEach(entry => {
-        const numericId = Number(entry.id);
-        if (!isNaN(numericId) && numericId > maxId) {
-            maxId = numericId;
-        } else if (typeof entry.id === 'string' && !isNaN(parseInt(entry.id, 10)) && parseInt(entry.id, 10) > maxId) {
-             maxId = parseInt(entry.id, 10);
+        if (entry.id !== undefined && entry.id !== null) {
+            const numericId = Number(entry.id);
+            if (!isNaN(numericId) && numericId > maxId) {
+                maxId = numericId;
+            }
         }
     });
-    nextId = maxId + 1;
+    nextId = maxId + 1; // Start next ID after the max found ID
 
-    const processedData = newData.map((entry, index) => ({
-        ...entry,
-        id: entry.id ?? (nextId + index)
-    }));
-    nextId = Math.max(nextId, nextId + newData.filter(e => !e.id).length);
+    // Assign IDs to entries that don't have one, starting from the calculated nextId
+    const processedData = newData.map((entry) => {
+        if (entry.id === undefined || entry.id === null) {
+            return { ...entry, id: nextId++ };
+        }
+        return { ...entry }; // Keep existing ID
+    });
 
-    simulatedDatabase = JSON.parse(JSON.stringify(processedData));
+    simulatedDatabase = JSON.parse(JSON.stringify(processedData)); // Deep copy
 
     simulatedRelationships = [];
     nextRelationshipId = 1;
 
-    console.log('Database replaced. New size:', simulatedDatabase.length);
-    console.log('Relationships cleared.');
-    console.log('Next data ID set to:', nextId);
-    console.log(`Current IDs in DB: [${simulatedDatabase.map(e => String(e.id)).join(', ')}]`);
+    console.log('[replaceDatabase Service] Database replaced. New size:', simulatedDatabase.length);
+    console.log('[replaceDatabase Service] Relationships cleared.');
+    console.log('[replaceDatabase Service] Next data ID set to:', nextId);
+    console.log(`[replaceDatabase Service] Current IDs in DB: [${simulatedDatabase.map(e => String(e.id)).join(', ')}]`);
     return true;
   } catch (error) {
-    console.error('Error in replaceDatabase service:', error);
+    console.error('[replaceDatabase Service] Error:', error);
     return false;
   }
 }
@@ -275,45 +271,56 @@ export async function replaceDatabase(newData: DataEntry[]): Promise<boolean> {
 export async function addRelationship(sourceEntryId: number | string, targetEntryId: number | string): Promise<RelationshipEntry | null> {
     const sourceIdStr = String(sourceEntryId);
     const targetIdStr = String(targetEntryId);
-    console.log(`addRelationship service called: Source ${sourceIdStr}, Target ${targetIdStr}`);
+    console.log(`[addRelationship Service] Called: Source ${sourceIdStr}, Target ${targetIdStr}`);
+    console.log(`[addRelationship Service] Current relationships before add:`, JSON.stringify(simulatedRelationships));
     try {
         await new Promise(resolve => setTimeout(resolve, 100)); // Simulate network delay
 
+        // Verify both source and target entries exist in the current data
         const sourceExists = simulatedDatabase.some(entry => String(entry.id) === sourceIdStr);
         const targetExists = simulatedDatabase.some(entry => String(entry.id) === targetIdStr);
 
-        if (!sourceExists || !targetExists) {
-            console.warn(`Cannot add relationship: Source (${sourceIdStr}) or Target (${targetIdStr}) entry does not exist in current session. DB IDs: [${simulatedDatabase.map(e => String(e.id)).join(', ')}]`);
+        if (!sourceExists) {
+            console.warn(`[addRelationship Service] Failed: Source entry ID ${sourceIdStr} not found. Current DB IDs: [${simulatedDatabase.map(e => String(e.id)).join(', ')}]`);
+            return null;
+        }
+        if (!targetExists) {
+             console.warn(`[addRelationship Service] Failed: Target entry ID ${targetIdStr} not found. Current DB IDs: [${simulatedDatabase.map(e => String(e.id)).join(', ')}]`);
+             return null;
+        }
+
+         // Check for self-referencing relationship
+        if (sourceIdStr === targetIdStr) {
+            console.warn(`[addRelationship Service] Failed: Cannot add self-referencing relationship for ID ${sourceIdStr}.`);
             return null;
         }
 
+        // Check if this exact relationship already exists
         const existingRelationship = simulatedRelationships.find(
             rel => String(rel.source_entry_id) === sourceIdStr &&
                    String(rel.target_entry_id) === targetIdStr
         );
 
         if (existingRelationship) {
-            console.warn(`Relationship from ${sourceIdStr} to ${targetIdStr} already exists.`);
-            return JSON.parse(JSON.stringify(existingRelationship));
+            console.warn(`[addRelationship Service] Relationship from ${sourceIdStr} to ${targetIdStr} already exists. Returning existing.`);
+            return JSON.parse(JSON.stringify(existingRelationship)); // Return copy of existing
         }
 
-         if (sourceIdStr === targetIdStr) {
-            console.warn(`Cannot add self-referencing relationship for ID ${sourceIdStr}.`);
-            return null;
-         }
 
+        // Create and add the new relationship
         const newRelationship: RelationshipEntry = {
             id: nextRelationshipId++,
-            source_entry_id: sourceEntryId,
+            source_entry_id: sourceEntryId, // Store original type if needed, but compare as strings
             target_entry_id: targetEntryId,
             created_at: new Date().toISOString(),
         };
         simulatedRelationships.push(newRelationship);
-        console.log('[addRelationship] Added new relationship:', newRelationship);
-        console.log('[addRelationship] Current simulated relationships count:', simulatedRelationships.length);
-        return JSON.parse(JSON.stringify(newRelationship));
+        console.log('[addRelationship Service] Successfully added new relationship:', newRelationship);
+        console.log('[addRelationship Service] Current simulated relationships count:', simulatedRelationships.length);
+        console.log(`[addRelationship Service] Current relationships after add:`, JSON.stringify(simulatedRelationships));
+        return JSON.parse(JSON.stringify(newRelationship)); // Return a deep copy
     } catch (error) {
-        console.error(`Error in addRelationship service for ${sourceIdStr} -> ${targetIdStr}:`, error);
+        console.error(`[addRelationship Service] Error for ${sourceIdStr} -> ${targetIdStr}:`, error);
         if (error instanceof Error) {
             throw new Error(`Failed to add relationship: ${error.message}`);
         }
@@ -331,16 +338,16 @@ export async function addRelationship(sourceEntryId: number | string, targetEntr
  */
 export async function getRelationshipsBySourceId(sourceEntryId: number | string): Promise<RelationshipEntry[]> {
     const sourceIdStr = String(sourceEntryId);
-    console.log(`getRelationshipsBySourceId service called for source ID: ${sourceIdStr}`);
+    console.log(`[getRelationshipsBySourceId Service] Called for source ID: ${sourceIdStr}`);
     try {
         await new Promise(resolve => setTimeout(resolve, 150)); // Simulate network delay
         const relationships = simulatedRelationships.filter(
             rel => String(rel.source_entry_id) === sourceIdStr
         );
-        console.log(`[getRelationshipsBySourceId] Found ${relationships.length} relationships for source ID ${sourceIdStr}`);
+        console.log(`[getRelationshipsBySourceId Service] Found ${relationships.length} relationships for source ID ${sourceIdStr}`);
         return JSON.parse(JSON.stringify(relationships));
     } catch (error) {
-        console.error(`Error in getRelationshipsBySourceId service for source ID ${sourceIdStr}:`, error);
+        console.error(`[getRelationshipsBySourceId Service] Error for source ID ${sourceIdStr}:`, error);
         if (error instanceof Error) {
             throw new Error(`Failed to fetch relationships for ID ${sourceIdStr}: ${error.message}`);
         }
@@ -356,13 +363,13 @@ export async function getRelationshipsBySourceId(sourceEntryId: number | string)
  * @throws {Error} If the operation fails.
  */
 export async function getAllRelationships(): Promise<RelationshipEntry[]> {
-    console.log('getAllRelationships service called');
+    console.log('[getAllRelationships Service] Called');
     try {
         await new Promise(resolve => setTimeout(resolve, 150)); // Simulate network delay
-        console.log(`[getAllRelationships] Returning ${simulatedRelationships.length} relationships.`);
+        console.log(`[getAllRelationships Service] Returning ${simulatedRelationships.length} relationships.`);
         return JSON.parse(JSON.stringify(simulatedRelationships));
     } catch (error) {
-        console.error('Error in getAllRelationships service:', error);
+        console.error('[getAllRelationships Service] Error:', error);
         if (error instanceof Error) {
             throw new Error(`Failed to fetch all relationships: ${error.message}`);
         }
