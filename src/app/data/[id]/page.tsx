@@ -1,6 +1,6 @@
 // src/app/data/[id]/page.tsx
 import { notFound } from 'next/navigation';
-import { getDataById, getRelationshipsBySourceId } from '@/services/database'; // Added getRelationshipsBySourceId
+import { getDataById } from '@/services/database'; // Removed getRelationshipsBySourceId import as relationships are handled client-side
 import { DataDetailView } from '@/components/data-detail-view';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import Link from 'next/link';
@@ -17,25 +17,33 @@ export const dynamic = 'force-dynamic'; // Ensure data is fetched on each reques
 
 export default async function DataDetailPage({ params }: DataDetailPageProps) {
   const { id } = params;
+  console.log(`[DataDetailPage] Rendering page for ID: ${id}`);
   let dataEntry = null;
-  // Relationships are fetched client-side in DataDetailView for now to handle adding/deleting dynamically
-  // let initialRelationships = [];
   let error: string | null = null;
 
   try {
+    console.log(`[DataDetailPage] Attempting to fetch data for ID: ${id} using getDataById.`);
     // Attempt to fetch data using the ID from the route parameter
     dataEntry = await getDataById(id);
-     // Optionally prefetch relationships here if needed for SSR/SEO,
-     // but the client component will manage the state primarily.
-     // initialRelationships = await getRelationshipsBySourceId(id);
+
+    if (dataEntry) {
+        console.log(`[DataDetailPage] Successfully fetched data for ID: ${id}`);
+    } else {
+        console.log(`[DataDetailPage] getDataById returned null for ID: ${id}. This will result in a 404 if no other error occurred.`);
+    }
 
   } catch (e) {
-    console.error(`Failed to fetch data or relationships for ID ${id}:`, e);
+    console.error(`[DataDetailPage] Failed to fetch data for ID ${id}:`, e);
     error = `Failed to load data for ID ${id}. Please try again later.`;
+    if (e instanceof Error) {
+        error = `${error} Details: ${e.message}`;
+    }
   }
 
   // If data entry is not found after attempting fetch (and no error stopped it), show 404
+  // This is the crucial check. If getDataById returns null, this triggers the 404.
   if (!error && !dataEntry) {
+     console.log(`[DataDetailPage] No data found for ID ${id} and no error occurred. Triggering notFound().`);
     notFound();
   }
 
@@ -55,11 +63,10 @@ export default async function DataDetailPage({ params }: DataDetailPageProps) {
             <p className="text-destructive">{error}</p>
           ) : dataEntry ? (
             // Pass the fetched data to the client component for interaction
-            // initialRelationships could be passed if prefetched, but client handles state
             <DataDetailView initialData={dataEntry} entryId={id} />
           ) : (
-             // Should ideally be handled by notFound(), but as a fallback:
-             <p>Data entry not found.</p>
+             // This fallback case should ideally not be reached due to the notFound() call above.
+             <p>Data entry not found (fallback message).</p>
           )}
         </CardContent>
       </Card>

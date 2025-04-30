@@ -18,28 +18,37 @@ export interface RelationshipEntry {
 }
 
 
-// Simulated database store (IN-MEMORY)
-// IMPORTANT: This is an in-memory simulation. Data added here will be lost
-// whenever the server restarts (e.g., during development when files change and
-// hot-reloading occurs, or when the server process is stopped and started).
-// For persistent storage, a real database connection (like PostgreSQL) is required.
+// ========================================================================
+// ==                         IMPORTANT NOTE                           ==
+// ========================================================================
+// This service uses an **IN-MEMORY** simulated database.
+// - Data added or modified using `addData`, `updateDataById`, `addRelationship`
+//   is stored ONLY in the server's memory for the current session.
+// - **ALL CHANGES WILL BE LOST** whenever the server restarts. This includes:
+//    - Stopping and starting the development server (`npm run dev`).
+//    - Automatic server restarts caused by file changes during development (hot-reloading).
+// - The initial `simulatedDatabase` array provides starting data that persists
+//   across restarts (because it's hardcoded), but any runtime additions do not.
+// - For persistent storage, replace this simulated implementation with a connection
+//   to a real database (e.g., PostgreSQL, Firestore, MongoDB).
+// ========================================================================
+
 let simulatedDatabase: DataEntry[] = [
    { id: 1, name: 'Simulated Example Data', value: 123, timestamp: new Date().toISOString(), details: 'Some initial details' },
    { id: 2, name: 'Another Simulated Entry', value: 456, category: 'Test', timestamp: new Date().toISOString(), email: ' test@example.com ', inconsistent_value: ' yes '},
    { id: 3, complex: { nested: true, arr: [1, 2] }, description: 'Complex object example', timestamp: new Date().toISOString(), status: 'pending' },
  ];
-let nextId = 4;
-// Simulated store for relationships (IN-MEMORY)
-// Same persistence limitations apply as for simulatedDatabase.
+let nextId = 4; // Next ID to assign for new entries
+
 let simulatedRelationships: RelationshipEntry[] = [];
-let nextRelationshipId = 1;
+let nextRelationshipId = 1; // Next ID for new relationships
 
 /**
  * Asynchronously adds a data entry to the simulated database.
- * This function correctly adds data to the in-memory array for the *current*
- * server session. However, the data will be lost if the server restarts.
+ * IMPORTANT: Adds data to the in-memory array for the *current* server session only.
+ * Data will be lost if the server restarts.
  *
- * @param data The data entry to add.
+ * @param data The data entry or array of entries to add.
  * @returns A promise that resolves to true if the operation was successful, false otherwise.
  */
 export async function addData(data: DataEntry | DataEntry[]): Promise<boolean> {
@@ -54,15 +63,17 @@ export async function addData(data: DataEntry | DataEntry[]): Promise<boolean> {
        if (Array.isArray(data)) {
         // Add each entry in the array
         data.forEach(entry => {
+          // Assign a new ID only if one is not provided
           const newEntry = { ...entry, id: entry.id ?? nextId++ };
           simulatedDatabase.push(newEntry);
-          console.log('Added entry:', newEntry);
+          console.log(`Added entry with ID: ${newEntry.id}`);
         });
        } else {
          // Add single entry
+         // Assign a new ID only if one is not provided
          const newEntry = { ...data, id: data.id ?? nextId++ };
          simulatedDatabase.push(newEntry);
-         console.log('Added entry:', newEntry);
+         console.log(`Added entry with ID: ${newEntry.id}`);
        }
        console.log('Current simulated DB size:', simulatedDatabase.length);
        return true;
@@ -102,31 +113,36 @@ export async function getAllData(): Promise<DataEntry[]> {
 /**
  * Asynchronously fetches a single data entry by its ID from the simulated database.
  * Retrieves data currently held in the in-memory store for the active server session.
+ * If you get a 404 for newly added data, ensure the server hasn't restarted since adding it.
  *
- * @param id The ID of the data entry to fetch.
+ * @param id The ID of the data entry to fetch (can be string from URL param or number).
  * @returns A promise that resolves to the DataEntry object or null if not found.
  * @throws {Error} If the operation fails.
  */
 export async function getDataById(id: number | string): Promise<DataEntry | null> {
-  console.log(`getDataById service called for ID: ${id}`);
+  const searchId = String(id); // Normalize search ID to string for consistent comparison
+  console.log(`getDataById service called for ID: ${searchId}`);
+  // Log current IDs in the simulated database for debugging
+  console.log(`Current simulatedDatabase state before search (IDs): [${simulatedDatabase.map(e => String(e.id)).join(', ')}]`);
   try {
     await new Promise(resolve => setTimeout(resolve, 100)); // Simulate network delay
-    // Ensure comparison works for both number and string IDs if necessary
-    const entry = simulatedDatabase.find(entry => String(entry.id) === String(id));
+
+    const entry = simulatedDatabase.find(entry => String(entry.id) === searchId);
+
     if (entry) {
-        console.log('Found entry:', entry);
-        // Return a deep copy
+        console.log(`Found entry for ID ${searchId}:`, entry);
+        // Return a deep copy to prevent modification of the stored object
         return JSON.parse(JSON.stringify(entry));
     } else {
-        console.log('Entry not found');
+        console.log(`Entry not found for ID ${searchId}. Possible causes: ID incorrect, or server restarted after data was added (in-memory data lost).`);
         return null;
     }
   } catch (error) {
-    console.error(`Error in getDataById service for ID ${id}:`, error);
+    console.error(`Error in getDataById service for ID ${searchId}:`, error);
     if (error instanceof Error) {
-      throw new Error(`Failed to fetch data for ID ${id}: ${error.message}`);
+      throw new Error(`Failed to fetch data for ID ${searchId}: ${error.message}`);
     }
-    throw new Error(`An unknown error occurred while fetching data for ID ${id}.`);
+    throw new Error(`An unknown error occurred while fetching data for ID ${searchId}.`);
   }
 }
 
@@ -141,27 +157,31 @@ export async function getDataById(id: number | string): Promise<DataEntry | null
  * @throws {Error} If the operation fails.
  */
 export async function updateDataById(id: number | string, updatedData: Partial<DataEntry>): Promise<boolean> {
-    console.log(`updateDataById service called for ID: ${id} with data:`, updatedData);
+    const updateId = String(id);
+    console.log(`updateDataById service called for ID: ${updateId} with data:`, updatedData);
     try {
         await new Promise(resolve => setTimeout(resolve, 200)); // Simulate network delay
-        const index = simulatedDatabase.findIndex(entry => String(entry.id) === String(id));
+        const index = simulatedDatabase.findIndex(entry => String(entry.id) === updateId);
 
         if (index !== -1) {
             // Merge existing data with updated data, ensuring ID remains unchanged
             const currentEntry = simulatedDatabase[index];
-            simulatedDatabase[index] = { ...currentEntry, ...updatedData, id: currentEntry.id };
+            // Make sure not to overwrite the ID with undefined from updatedData
+            const dataToMerge = { ...updatedData };
+            delete dataToMerge.id; // Remove id from payload if present, keep the original
+            simulatedDatabase[index] = { ...currentEntry, ...dataToMerge };
             console.log('Updated entry:', simulatedDatabase[index]);
             return true;
         } else {
-            console.log('Entry not found for update');
+            console.log(`Entry not found for update (ID: ${updateId}).`);
             return false;
         }
     } catch (error) {
-        console.error(`Error in updateDataById service for ID ${id}:`, error);
+        console.error(`Error in updateDataById service for ID ${updateId}:`, error);
         if (error instanceof Error) {
-            throw new Error(`Failed to update data for ID ${id}: ${error.message}`);
+            throw new Error(`Failed to update data for ID ${updateId}: ${error.message}`);
         }
-        throw new Error(`An unknown error occurred while updating data for ID ${id}.`);
+        throw new Error(`An unknown error occurred while updating data for ID ${updateId}.`);
     }
 }
 
@@ -175,42 +195,44 @@ export async function updateDataById(id: number | string, updatedData: Partial<D
  * @throws {Error} If the operation fails.
  */
 export async function addRelationship(sourceEntryId: number | string, targetEntryId: number | string): Promise<RelationshipEntry | null> {
-    console.log(`addRelationship service called: Source ${sourceEntryId}, Target ${targetEntryId}`);
+    const sourceIdStr = String(sourceEntryId);
+    const targetIdStr = String(targetEntryId);
+    console.log(`addRelationship service called: Source ${sourceIdStr}, Target ${targetIdStr}`);
     try {
         await new Promise(resolve => setTimeout(resolve, 100)); // Simulate network delay
 
         // Basic validation: check if source and target entries exist in the current in-memory store
-        const sourceExists = simulatedDatabase.some(entry => String(entry.id) === String(sourceEntryId));
-        const targetExists = simulatedDatabase.some(entry => String(entry.id) === String(targetEntryId));
+        const sourceExists = simulatedDatabase.some(entry => String(entry.id) === sourceIdStr);
+        const targetExists = simulatedDatabase.some(entry => String(entry.id) === targetIdStr);
 
         if (!sourceExists || !targetExists) {
-            console.warn(`Cannot add relationship: Source (${sourceEntryId}) or Target (${targetEntryId}) entry does not exist in current session.`);
+            console.warn(`Cannot add relationship: Source (${sourceIdStr}) or Target (${targetIdStr}) entry does not exist in current session.`);
             return null; // Indicate failure due to non-existent entries
         }
 
         // Prevent duplicate relationships (source -> target)
         const existingRelationship = simulatedRelationships.find(
-            rel => String(rel.source_entry_id) === String(sourceEntryId) &&
-                   String(rel.target_entry_id) === String(targetEntryId)
+            rel => String(rel.source_entry_id) === sourceIdStr &&
+                   String(rel.target_entry_id) === targetIdStr
         );
 
         if (existingRelationship) {
-            console.warn(`Relationship from ${sourceEntryId} to ${targetEntryId} already exists.`);
+            console.warn(`Relationship from ${sourceIdStr} to ${targetIdStr} already exists.`);
             // Return existing one or null, depending on desired behavior. Returning existing for idempotency.
             return JSON.parse(JSON.stringify(existingRelationship));
         }
 
         // Prevent self-referencing relationships
-         if (String(sourceEntryId) === String(targetEntryId)) {
-            console.warn(`Cannot add self-referencing relationship for ID ${sourceEntryId}.`);
+         if (sourceIdStr === targetIdStr) {
+            console.warn(`Cannot add self-referencing relationship for ID ${sourceIdStr}.`);
             return null;
          }
 
 
         const newRelationship: RelationshipEntry = {
             id: nextRelationshipId++,
-            source_entry_id: sourceEntryId,
-            target_entry_id: targetEntryId,
+            source_entry_id: sourceEntryId, // Keep original type if needed, but use string for comparison
+            target_entry_id: targetEntryId, // Keep original type if needed
             created_at: new Date().toISOString(),
         };
         simulatedRelationships.push(newRelationship);
@@ -218,7 +240,7 @@ export async function addRelationship(sourceEntryId: number | string, targetEntr
         console.log('Current simulated relationships count:', simulatedRelationships.length);
         return JSON.parse(JSON.stringify(newRelationship)); // Return a copy
     } catch (error) {
-        console.error(`Error in addRelationship service for ${sourceEntryId} -> ${targetEntryId}:`, error);
+        console.error(`Error in addRelationship service for ${sourceIdStr} -> ${targetIdStr}:`, error);
         if (error instanceof Error) {
             throw new Error(`Failed to add relationship: ${error.message}`);
         }
@@ -235,24 +257,26 @@ export async function addRelationship(sourceEntryId: number | string, targetEntr
  * @throws {Error} If the operation fails.
  */
 export async function getRelationshipsBySourceId(sourceEntryId: number | string): Promise<RelationshipEntry[]> {
-    console.log(`getRelationshipsBySourceId service called for source ID: ${sourceEntryId}`);
+    const sourceIdStr = String(sourceEntryId);
+    console.log(`getRelationshipsBySourceId service called for source ID: ${sourceIdStr}`);
     try {
         await new Promise(resolve => setTimeout(resolve, 150)); // Simulate network delay
         const relationships = simulatedRelationships.filter(
-            rel => String(rel.source_entry_id) === String(sourceEntryId)
+            rel => String(rel.source_entry_id) === sourceIdStr
         );
-        console.log(`Found ${relationships.length} relationships for source ID ${sourceEntryId}`);
+        console.log(`Found ${relationships.length} relationships for source ID ${sourceIdStr}`);
         return JSON.parse(JSON.stringify(relationships)); // Return a deep copy
     } catch (error) {
-        console.error(`Error in getRelationshipsBySourceId service for source ID ${sourceEntryId}:`, error);
+        console.error(`Error in getRelationshipsBySourceId service for source ID ${sourceIdStr}:`, error);
         if (error instanceof Error) {
-            throw new Error(`Failed to fetch relationships for ID ${sourceEntryId}: ${error.message}`);
+            throw new Error(`Failed to fetch relationships for ID ${sourceIdStr}: ${error.message}`);
         }
-        throw new Error(`An unknown error occurred while fetching relationships for ID ${sourceEntryId}.`);
+        throw new Error(`An unknown error occurred while fetching relationships for ID ${sourceIdStr}.`);
     }
 }
 
-// NOTE: In a real application, you would replace these functions with actual
-// database operations (e.g., SQL queries for PostgreSQL). The in-memory arrays
-// (`simulatedDatabase`, `simulatedRelationships`, `nextId`, `nextRelationshipId`)
+// NOTE: To fix data persistence issues, replace this entire file's implementation
+// with code that interacts with a real, persistent database (e.g., PostgreSQL, Firestore).
+// The in-memory arrays (`simulatedDatabase`, `simulatedRelationships`, `nextId`, `nextRelationshipId`)
 // would be removed.
+
