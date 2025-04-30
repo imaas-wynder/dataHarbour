@@ -17,19 +17,20 @@ export const dynamic = 'force-dynamic'; // Ensure data is fetched on each reques
 
 export default async function DataDetailPage({ params }: DataDetailPageProps) {
   const { id } = params;
-  console.log(`[DataDetailPage] Rendering page for ID: ${id}`);
+  console.log(`[DataDetailPage] Rendering page for ID (from params): ${id} (Type: ${typeof id})`);
   let dataEntry = null;
   let error: string | null = null;
 
   try {
-    console.log(`[DataDetailPage] Attempting to fetch data for ID: ${id} using getDataById.`);
-    // Attempt to fetch data using the ID from the route parameter
+    console.log(`[DataDetailPage] Attempting to fetch data using getDataById with ID: ${id}`);
+    // Ensure ID is passed correctly (it should be a string from params)
     dataEntry = await getDataById(id);
 
     if (dataEntry) {
-        console.log(`[DataDetailPage] Successfully fetched data for ID: ${id}`);
+        console.log(`[DataDetailPage] Successfully fetched data for ID: ${id}. Data:`, dataEntry);
     } else {
-        console.log(`[DataDetailPage] getDataById returned null for ID: ${id}. This will result in a 404 if no other error occurred.`);
+        // This is the critical point for 404s
+        console.warn(`[DataDetailPage] getDataById returned null for ID: ${id}. This indicates the entry was not found in the current in-memory database session. Check if the server restarted after adding the data.`);
     }
 
   } catch (e) {
@@ -40,10 +41,11 @@ export default async function DataDetailPage({ params }: DataDetailPageProps) {
     }
   }
 
-  // If data entry is not found after attempting fetch (and no error stopped it), show 404
-  // This is the crucial check. If getDataById returns null, this triggers the 404.
+  // Trigger 404 if no error occurred BUT dataEntry is still null
   if (!error && !dataEntry) {
-     console.log(`[DataDetailPage] No data found for ID ${id} and no error occurred. Triggering notFound().`);
+     console.log(`[DataDetailPage] No data found for ID ${id} (getDataById returned null) and no fetch error occurred. Triggering notFound().`);
+     // This explicitly calls the Next.js notFound function, which renders the 404 page.
+     // It's the correct way to handle cases where the resource doesn't exist.
     notFound();
   }
 
@@ -63,10 +65,12 @@ export default async function DataDetailPage({ params }: DataDetailPageProps) {
             <p className="text-destructive">{error}</p>
           ) : dataEntry ? (
             // Pass the fetched data to the client component for interaction
-            <DataDetailView initialData={dataEntry} entryId={id} />
+            // Ensure the ID passed is consistent (string)
+            <DataDetailView initialData={dataEntry} entryId={String(id)} />
           ) : (
-             // This fallback case should ideally not be reached due to the notFound() call above.
-             <p>Data entry not found (fallback message).</p>
+             // This fallback case should technically not be reached due to the notFound() call.
+             // Added just in case of unexpected logic flow.
+             <p className="text-destructive">Data entry not found (ID: {id}). It might have been removed or wasn't persisted due to server restart.</p>
           )}
         </CardContent>
       </Card>

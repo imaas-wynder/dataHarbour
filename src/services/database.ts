@@ -66,16 +66,17 @@ export async function addData(data: DataEntry | DataEntry[]): Promise<boolean> {
           // Assign a new ID only if one is not provided
           const newEntry = { ...entry, id: entry.id ?? nextId++ };
           simulatedDatabase.push(newEntry);
-          console.log(`Added entry with ID: ${newEntry.id}`);
+          console.log(`[addData] Added entry with ID: ${newEntry.id}`);
         });
        } else {
          // Add single entry
          // Assign a new ID only if one is not provided
          const newEntry = { ...data, id: data.id ?? nextId++ };
          simulatedDatabase.push(newEntry);
-         console.log(`Added entry with ID: ${newEntry.id}`);
+         console.log(`[addData] Added entry with ID: ${newEntry.id}`);
        }
-       console.log('Current simulated DB size:', simulatedDatabase.length);
+       console.log('[addData] Current simulated DB size:', simulatedDatabase.length);
+       console.log(`[addData] Current IDs in DB: [${simulatedDatabase.map(e => String(e.id)).join(', ')}]`);
        return true;
     } else {
        console.warn('Simulated failure in addData for:', data);
@@ -120,31 +121,40 @@ export async function getAllData(): Promise<DataEntry[]> {
  * @throws {Error} If the operation fails.
  */
 export async function getDataById(id: number | string): Promise<DataEntry | null> {
-  const searchId = String(id); // Normalize search ID to string for consistent comparison
-  console.log(`getDataById service called for ID: ${searchId}`);
-  // Log current IDs in the simulated database for debugging
-  console.log(`Current simulatedDatabase state before search (IDs): [${simulatedDatabase.map(e => String(e.id)).join(', ')}]`);
+  const searchId = String(id); // Normalize search ID to string
+  console.log(`[getDataById] Service called for ID: ${searchId}`);
+  // --- Add Detailed Logging Here ---
+  console.log(`[getDataById] Current simulatedDatabase state before search (IDs): [${simulatedDatabase.map(e => String(e.id)).join(', ')}]`);
+  console.log(`[getDataById] Searching for ID: ${searchId} (Type: ${typeof searchId})`);
+  // --- End Detailed Logging ---
   try {
     await new Promise(resolve => setTimeout(resolve, 100)); // Simulate network delay
 
-    const entry = simulatedDatabase.find(entry => String(entry.id) === searchId);
+    const entry = simulatedDatabase.find(entry => {
+        const entryIdStr = String(entry.id);
+        // Add logging inside the find callback for detailed comparison if needed
+        // console.log(`[getDataById] Comparing: Stored ID "${entryIdStr}" (Type: ${typeof entryIdStr}) vs Search ID "${searchId}" (Type: ${typeof searchId})`);
+        return entryIdStr === searchId;
+    });
+
 
     if (entry) {
-        console.log(`Found entry for ID ${searchId}:`, entry);
+        console.log(`[getDataById] Found entry for ID ${searchId}:`, entry);
         // Return a deep copy to prevent modification of the stored object
         return JSON.parse(JSON.stringify(entry));
     } else {
-        console.log(`Entry not found for ID ${searchId}. Possible causes: ID incorrect, or server restarted after data was added (in-memory data lost).`);
+        console.warn(`[getDataById] Entry not found for ID ${searchId}. This is expected if the server restarted (e.g., due to file changes/HMR) after the data was added, as the in-memory store was reset.`);
         return null;
     }
   } catch (error) {
-    console.error(`Error in getDataById service for ID ${searchId}:`, error);
+    console.error(`[getDataById] Error fetching data for ID ${searchId}:`, error);
     if (error instanceof Error) {
       throw new Error(`Failed to fetch data for ID ${searchId}: ${error.message}`);
     }
     throw new Error(`An unknown error occurred while fetching data for ID ${searchId}.`);
   }
 }
+
 
 /**
  * Asynchronously updates a data entry by its ID in the simulated database.
@@ -206,7 +216,7 @@ export async function addRelationship(sourceEntryId: number | string, targetEntr
         const targetExists = simulatedDatabase.some(entry => String(entry.id) === targetIdStr);
 
         if (!sourceExists || !targetExists) {
-            console.warn(`Cannot add relationship: Source (${sourceIdStr}) or Target (${targetIdStr}) entry does not exist in current session.`);
+            console.warn(`Cannot add relationship: Source (${sourceIdStr}) or Target (${targetIdStr}) entry does not exist in current session. DB IDs: [${simulatedDatabase.map(e => String(e.id)).join(', ')}]`);
             return null; // Indicate failure due to non-existent entries
         }
 
@@ -279,4 +289,3 @@ export async function getRelationshipsBySourceId(sourceEntryId: number | string)
 // with code that interacts with a real, persistent database (e.g., PostgreSQL, Firestore).
 // The in-memory arrays (`simulatedDatabase`, `simulatedRelationships`, `nextId`, `nextRelationshipId`)
 // would be removed.
-
