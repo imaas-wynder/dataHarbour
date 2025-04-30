@@ -17,10 +17,10 @@ import { Button } from "@/components/ui/button";
 import { Eye, Edit } from "lucide-react"; // Added Edit icon
 
 interface DataPreviewTableProps {
-  initialData: DataEntry[];
+  data: DataEntry[]; // Changed prop name from initialData to data
 }
 
-export function DataPreviewTable({ initialData: data }: DataPreviewTableProps) {
+export function DataPreviewTable({ data }: DataPreviewTableProps) { // Use the 'data' prop
   // Determine table headers dynamically from the first data entry
   // Prioritize common keys if data structures vary, or use a union of keys
   const allKeys = data.reduce((keys, entry) => {
@@ -37,6 +37,7 @@ export function DataPreviewTable({ initialData: data }: DataPreviewTableProps) {
   const simpleHeaders = headers.filter(header => {
       if (data.length > 0) {
         const firstValue = data[0][header];
+        // Allow null, but exclude complex objects/arrays
         return typeof firstValue !== 'object' || firstValue === null;
       }
       return true; // Show header if no data yet
@@ -49,7 +50,7 @@ export function DataPreviewTable({ initialData: data }: DataPreviewTableProps) {
     <ScrollArea className="rounded-md border">
       <Table>
         <TableCaption>
-          A preview of the current data. {data.length === 0 ? "No data available." : ""} Click 'View/Clean' to see details.
+          {data.length === 0 ? "No data available matching the current criteria." : "A preview of the current data. Click 'View / Clean' to see details."}
         </TableCaption>
         <TableHeader>
           <TableRow>
@@ -66,12 +67,14 @@ export function DataPreviewTable({ initialData: data }: DataPreviewTableProps) {
               <TableRow key={entry.id || `entry-${index}`}>
                 {simpleHeaders.map((header) => (
                   <TableCell key={`${entry.id || `entry-${index}`}-${header}`} className="whitespace-nowrap max-w-[200px] truncate">
-                    {/* Display value, handle potential null/undefined */}
-                    {String(entry[header] ?? '')}
+                    {/* Display value, handle potential null/undefined/objects safely */}
+                     {typeof entry[header] === 'object' && entry[header] !== null
+                       ? JSON.stringify(entry[header]) // Basic stringify for objects/arrays
+                       : String(entry[header] ?? '')}
                   </TableCell>
                 ))}
                 {/* Actions Cell */}
-                <TableCell className="whitespace-nowrap">
+                <TableCell className="whitespace-nowrap text-right">
                   {entry.id ? (
                     <Button variant="outline" size="sm" asChild>
                       <Link href={`/data/${entry.id}`}>
@@ -79,7 +82,7 @@ export function DataPreviewTable({ initialData: data }: DataPreviewTableProps) {
                       </Link>
                     </Button>
                   ) : (
-                    <span className="text-muted-foreground text-xs">No ID</span>
+                    <span className="text-muted-foreground text-xs italic">No ID</span>
                   )}
                 </TableCell>
               </TableRow>
@@ -87,7 +90,7 @@ export function DataPreviewTable({ initialData: data }: DataPreviewTableProps) {
           ) : (
             <TableRow>
               <TableCell colSpan={displayHeaders.length} className="h-24 text-center">
-                No data to display. Upload some data or try refreshing.
+                No data to display matching the current filter or criteria.
               </TableCell>
             </TableRow>
           )}
