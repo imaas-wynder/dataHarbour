@@ -74,8 +74,8 @@ export function DataPreviewTable({ data, relationships }: DataPreviewTableProps)
           {data.length > 0 ? (
             data.map((entry, index) => {
                const relatedIds = getRelatedTargetIds(entry.id!);
-               return (
-              <TableRow key={entry.id || `entry-${index}`}>
+               // Ensure no whitespace is returned before/after the TableRow
+               return (<TableRow key={entry.id || `entry-${index}`}>
                  {/* ID Cell */}
                  <TableCell className="whitespace-nowrap max-w-[100px] truncate font-medium">
                     {entry.id ? String(entry.id) : 'N/A'}
@@ -118,10 +118,9 @@ export function DataPreviewTable({ data, relationships }: DataPreviewTableProps)
                     <span className="text-muted-foreground text-xs italic">No ID</span>
                   )}
                 </TableCell>
-              </TableRow>
-               );
+              </TableRow>); // End of return statement for map
             })
-          ) : (
+          ) : ( // Start of else block for empty data
             <TableRow>
               <TableCell colSpan={displayHeaders.length} className="h-24 text-center">
                 No data to display matching the current filter or criteria.
