@@ -1,3 +1,4 @@
+// src/components/data-preview-table.tsx
 "use client"; // Keep as client component to receive props smoothly from parent client component
 
 import type { DataEntry } from "@/services/database";
@@ -44,13 +45,13 @@ export function DataPreviewTable({ initialData: data }: DataPreviewTableProps) {
         <TableBody>
           {data.length > 0 ? (
             data.map((entry, index) => (
-              <TableRow key={entry.id || `entry-${index}`}> {/* More robust key */}
+              <TableRow key={entry.id || `entry-${index}`}>
                 {headers.map((header) => (
                   <TableCell key={`${entry.id || `entry-${index}`}-${header}`} className="whitespace-nowrap">
                     {/* Display value, handle potential objects/arrays simply */}
                     {typeof entry[header] === 'object' && entry[header] !== null
                       ? JSON.stringify(entry[header])
-                      : String(entry[header] ?? '')} {/* Handle null/undefined gracefully */}
+                      : String(entry[header] ?? '')}
                   </TableCell>
                 ))}
               </TableRow>
