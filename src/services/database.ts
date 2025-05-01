@@ -24,9 +24,12 @@ function getPool(): Pool {
         const password = process.env.POSTGRES_PASSWORD; // Keep confidential
         const database = process.env.POSTGRES_DATABASE;
 
+        const connectionString = `postgres://${user}:[MASKED]@${host}:${port}/${database}`; // For logging
+
         if (!user || !password || !database) {
              console.error("[Database Service] ERROR: Missing required PostgreSQL environment variables (POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DATABASE).");
-             throw new Error("Missing required PostgreSQL environment variables.");
+             console.error(`[Database Service] Current Config: host=${host}, port=${port}, user=${user ? user : 'MISSING'}, database=${database ? database : 'MISSING'}, password=${password ? '[SET]' : 'MISSING'}`);
+             throw new Error("Missing required PostgreSQL environment variables. Check your .env file.");
         }
 
         console.log(`[Database Service] Creating PostgreSQL connection pool with config: { host: ${host}, port: ${port}, user: ${user}, database: ${database}, password: [MASKED] }`);
@@ -68,17 +71,38 @@ function getPool(): Pool {
              .catch(err => {
                  console.error('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!');
                  console.error('[Database Service] FATAL: Initial PostgreSQL Pool connection test failed.');
+                 console.error(`   Attempted to connect to: ${connectionString}`);
                  console.error(`   Error Code: ${err.code}`);
                  console.error(`   Error Message: ${err.message}`);
-                 console.error(`   Attempted to connect to: postgres://${user}:[MASKED]@${host}:${port}/${database}`);
-                 console.error('   Troubleshooting Tips:');
-                 console.error('     1. Is the PostgreSQL server running? Check services or use `pg_ctl status`.');
+                 if (err.code === 'ECONNREFUSED') {
+                     console.error('   ---> ECONNREFUSED error means the connection was rejected by the server.');
+                     console.error('        Common causes:');
+                     console.error('        1. PostgreSQL server is not running on the specified host and port.');
+                     console.error('        2. Firewall is blocking the connection.');
+                     console.error('        3. Incorrect POSTGRES_HOST or POSTGRES_PORT in .env.');
+                 } else if (err.code === 'ENOTFOUND') {
+                     console.error('   ---> ENOTFOUND error means the specified hostname could not be resolved.');
+                     console.error('        Common causes:');
+                     console.error('        1. Typo in POSTGRES_HOST in .env.');
+                     console.error('        2. DNS resolution issues.');
+                 } else if (err.code === '28P01') { // password authentication failed
+                    console.error('   ---> Authentication failed (Invalid password or user).');
+                    console.error('        Common causes:');
+                    console.error('        1. Incorrect POSTGRES_USER or POSTGRES_PASSWORD in .env.');
+                    console.error('        2. User does not have connection privileges in pg_hba.conf.');
+                 } else if (err.code === '3D000') { // database does not exist
+                    console.error(`   ---> Database "${database}" does not exist.`);
+                    console.error('        Common causes:');
+                    console.error('        1. Incorrect POSTGRES_DATABASE in .env.');
+                    console.error('        2. The database was not created in PostgreSQL.');
+                 }
+                 console.error('   Troubleshooting Tips (See README.md for more details):');
+                 console.error('     1. Is the PostgreSQL server running? (e.g., `brew services start postgresql`, `systemctl status postgresql`, Docker container running?)');
                  console.error('     2. Are the .env variables (POSTGRES_HOST, POSTGRES_PORT, POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DATABASE) correct?');
-                 console.error('     3. Is PostgreSQL configured to accept connections from this application host? Check `postgresql.conf` (listen_addresses) and `pg_hba.conf` (authentication methods).');
-                 console.error('     4. Is a firewall blocking the connection to the PostgreSQL port?');
+                 console.error('     3. Is PostgreSQL configured to accept connections? Check `postgresql.conf` (listen_addresses) and `pg_hba.conf`.');
+                 console.error('     4. Is a firewall blocking the connection?');
                  console.error('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!');
                  // Allow the application to continue starting, but subsequent DB operations will likely fail.
-                 // Throwing here would prevent the app server from starting at all.
                  // throw new Error(`Initial PostgreSQL connection failed: ${err.message}`);
              });
 
@@ -129,7 +153,7 @@ async function initializeSchema(): Promise<void> {
     } catch (connectError) {
          console.error('[Database Service] Failed to acquire client for schema initialization:', connectError);
          // Cannot proceed with schema init if connection fails
-         throw new Error(`Failed to connect to database for schema initialization: ${connectError.message}`);
+         throw new Error(`Failed to connect to database for schema initialization: ${connectError.message || connectError}`);
     }
 
     try {
@@ -735,4 +759,3 @@ process.on('SIGTERM', async () => {
   }
   process.exit(0);
 });
-
