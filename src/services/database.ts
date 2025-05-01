@@ -15,7 +15,7 @@ import { v4 as uuidv4 } from 'uuid';
 // ========================================================================
 //Basic connection
 //const connectionString = `postgres://Dataharbour:d&h$_628@localhost:5432/dataharbor_db`;
-const client (connectionString);
+//const client (connectionString);
 
 
 // --- Connection Pool ---

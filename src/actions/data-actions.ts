@@ -3,7 +3,7 @@
 'use server';
 import pool from '@/services/db/client';
 
-/*import {
+import {
     addData,
     updateDataById,
     getDataById,
@@ -17,7 +17,7 @@ import pool from '@/services/db/client';
     getActiveDatasetName,    // Import new service function
     getAllDatasetNames,      // Import new service function
     // Removed replaceDatabase import as it's superseded by createOrReplaceDataset
-} from '@/services/database';*/
+} from '@/services/database';
 import type { DataEntry, RelationshipEntry } from '@/services/types'; // Import types
 import { revalidatePath } from 'next/cache';
 import { cleanDataFlow } from '@/ai/flows/clean-data-flow';
