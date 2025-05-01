@@ -1,8 +1,9 @@
+
 // src/components/data-detail-view.tsx
 "use client";
 
 import { useState, useTransition, useEffect, useMemo, useCallback } from 'react';
-import type { DataEntry, RelationshipEntry } from '@/services/database';
+import type { DataEntry, RelationshipEntry } from '@/services/types'; // Updated import path
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import {
@@ -63,16 +64,16 @@ export function DataDetailView({ initialData, entryId }: DataDetailViewProps) {
      setRelationshipError(null);
      startLoadingRelationshipsTransition(async () => {
        try {
+         // getRelationshipsAction operates on the active dataset
          const result = await getRelationshipsAction(entryId);
          if (result.success && Array.isArray(result.data)) {
            setRelationships(result.data);
-           // Extract target IDs and fetch their full data
            const targetIds = result.data.map((rel: RelationshipEntry) => rel.target_entry_id);
            if (targetIds.length > 0) {
                fetchRelatedData(targetIds);
            } else {
-               setRelatedData([]); // Clear related data if no relationships
-               setRelatedHeaders([]); // Clear headers
+               setRelatedData([]);
+               setRelatedHeaders([]);
            }
          } else {
            setRelationshipError(result.error || 'Failed to load relationships.');
@@ -100,6 +101,7 @@ export function DataDetailView({ initialData, entryId }: DataDetailViewProps) {
    const fetchRelatedData = (targetIds: (string | number)[]) => {
        startLoadingRelatedDataTransition(async () => {
             try {
+                // getDataByIdsAction operates on the active dataset
                 const result = await getDataByIdsAction(targetIds);
                 if (result.success && Array.isArray(result.data)) {
                     setRelatedData(result.data);
@@ -113,16 +115,15 @@ export function DataDetailView({ initialData, entryId }: DataDetailViewProps) {
                     if (headers.includes('id')) {
                         headers = ['id', ...headers.filter(h => h !== 'id')];
                     }
-                     // Filter out complex objects/arrays from direct display for simplicity initially
                     const simpleHeaders = headers.filter(header => {
-                        if (result.data.length > 0) {
+                        if (result.data.length > 0 && result.data[0] && typeof result.data[0] === 'object') {
                             const firstValue = result.data[0][header];
                             return typeof firstValue !== 'object' || firstValue === null;
                         }
                         return true;
                     });
                     setRelatedHeaders(simpleHeaders);
-                    setTempHeaders(simpleHeaders); // Initialize temp headers
+                    setTempHeaders(simpleHeaders);
 
                 } else {
                     setRelationshipError(result.error || 'Failed to load data for related entries.');
@@ -145,6 +146,7 @@ export function DataDetailView({ initialData, entryId }: DataDetailViewProps) {
     setCleanedDataSuggestion(null);
     startCleaningTransition(async () => {
       try {
+        // cleanDataAction operates on the active dataset implicitly via getDataById
         const result = await cleanDataAction(entryId);
         if (result.success && result.data) {
           setCleanedDataSuggestion(result.data as DataEntry);
@@ -179,6 +181,7 @@ export function DataDetailView({ initialData, entryId }: DataDetailViewProps) {
       setEditError(null);
       startSavingTransition(async () => {
         try {
+            // updateDataAction operates on the active dataset
             const result = await updateDataAction(entryId, cleanedDataSuggestion);
              if (result.success) {
                 setCurrentData(cleanedDataSuggestion);
@@ -187,7 +190,7 @@ export function DataDetailView({ initialData, entryId }: DataDetailViewProps) {
                     title: 'Success',
                     description: result.message || 'Data updated successfully.',
                 });
-                 // No need to re-fetch relationships here unless the update impacts them
+                 fetchRelationships(); // Re-fetch relationships in case update affects related data display
             } else {
                  setError(result.error || 'Failed to update data.');
                  toast({
@@ -262,6 +265,7 @@ export function DataDetailView({ initialData, entryId }: DataDetailViewProps) {
     startSavingTransition(async () => {
         try {
             const dataToSave = { ...parsedData };
+            // updateDataAction operates on the active dataset
             const result = await updateDataAction(entryId, dataToSave);
             if (result.success) {
                 setCurrentData({ ...dataToSave, id: currentData.id });
@@ -270,7 +274,7 @@ export function DataDetailView({ initialData, entryId }: DataDetailViewProps) {
                     title: 'Success',
                     description: result.message || 'Data updated successfully.',
                 });
-                 // No need to re-fetch relationships here unless the update impacts them
+                 fetchRelationships(); // Re-fetch relationships after manual save
             } else {
                 setError(result.error || 'Failed to update data.');
                 toast({
@@ -303,6 +307,7 @@ export function DataDetailView({ initialData, entryId }: DataDetailViewProps) {
         setRelationshipError(null);
         startAddingRelationshipTransition(async () => {
              try {
+                 // addRelationshipAction operates on the active dataset
                  const result = await addRelationshipAction(entryId, targetEntryId.trim());
                  if (result.success && result.data) {
                      setTargetEntryId(''); // Clear input on success
@@ -310,8 +315,7 @@ export function DataDetailView({ initialData, entryId }: DataDetailViewProps) {
                          title: 'Success',
                          description: result.message || 'Relationship added successfully.',
                      });
-                     // Re-fetch relationships and related data to update the table
-                     fetchRelationships();
+                     fetchRelationships(); // Re-fetch relationships and related data
                  } else {
                      setRelationshipError(result.error || 'Failed to add relationship.');
                      toast({
@@ -345,13 +349,13 @@ export function DataDetailView({ initialData, entryId }: DataDetailViewProps) {
 
   // --- Header Editing Handlers ---
   const handleEditHeadersClick = () => {
-    setTempHeaders([...relatedHeaders]); // Copy current headers to temp state
+    setTempHeaders([...relatedHeaders]);
     setIsEditingHeaders(true);
   };
 
   const handleCancelHeaderEdit = () => {
     setIsEditingHeaders(false);
-    setTempHeaders([]); // Clear temp headers
+    setTempHeaders([]);
   };
 
   const handleHeaderInputChange = (index: number, value: string) => {
@@ -361,7 +365,7 @@ export function DataDetailView({ initialData, entryId }: DataDetailViewProps) {
   };
 
   const handleSaveHeaders = () => {
-    setRelatedHeaders(tempHeaders); // Apply the edited headers
+    setRelatedHeaders(tempHeaders);
     setIsEditingHeaders(false);
      toast({
       title: 'Headers Updated',
@@ -369,6 +373,8 @@ export function DataDetailView({ initialData, entryId }: DataDetailViewProps) {
     });
   };
   // --- End Header Editing Handlers ---
+
+  const isActionPending = isCleaning || isSaving || isLoadingRelationships || isLoadingRelatedData || isAddingRelationship;
 
 
   return (
@@ -424,10 +430,10 @@ export function DataDetailView({ initialData, entryId }: DataDetailViewProps) {
                     </div>
                  ) : (
                     <div className="flex gap-2">
-                        <Button onClick={handleEditClick} disabled={isCleaning || isSaving || isAddingRelationship || isLoadingRelatedData || isLoadingRelationships}>
+                        <Button onClick={handleEditClick} disabled={isActionPending}>
                              <Edit className="mr-2 h-4 w-4" /> Edit
                          </Button>
-                         <Button onClick={handleCleanData} disabled={isCleaning || isSaving || isAddingRelationship || isLoadingRelatedData || isLoadingRelationships}>
+                         <Button onClick={handleCleanData} disabled={isActionPending}>
                            {isCleaning ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
                            {isCleaning ? 'Cleaning...' : 'Clean Data with AI'}
                          </Button>
@@ -482,7 +488,7 @@ export function DataDetailView({ initialData, entryId }: DataDetailViewProps) {
                     <CardDescription>Define relationships and view details of linked entries (Source ID: {entryId}).</CardDescription>
                 </div>
                 {relatedData.length > 0 && !isEditingHeaders && (
-                     <Button variant="outline" size="sm" onClick={handleEditHeadersClick} disabled={isLoadingRelationships || isLoadingRelatedData}>
+                     <Button variant="outline" size="sm" onClick={handleEditHeadersClick} disabled={isActionPending}>
                         <Columns3 className="mr-2 h-4 w-4" /> Edit Headers
                      </Button>
                 )}
@@ -515,10 +521,10 @@ export function DataDetailView({ initialData, entryId }: DataDetailViewProps) {
                         placeholder="Enter ID of related entry"
                         value={targetEntryId}
                         onChange={(e) => setTargetEntryId(e.target.value)}
-                        disabled={isAddingRelationship}
+                        disabled={isAddingRelationship || isActionPending}
                     />
                 </div>
-                 <Button onClick={handleAddRelationship} disabled={isAddingRelationship || isLoadingRelationships || isLoadingRelatedData}>
+                 <Button onClick={handleAddRelationship} disabled={isAddingRelationship || isActionPending}>
                     {isAddingRelationship ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
                     {isAddingRelationship ? 'Adding...' : 'Add Relationship'}
                  </Button>
@@ -574,8 +580,6 @@ export function DataDetailView({ initialData, entryId }: DataDetailViewProps) {
                                     View
                                   </Link>
                                 </Button>
-                                {/* Future delete relationship button placeholder */}
-                                {/* <Button variant="ghost" size="icon" disabled> <Trash2 className="h-4 w-4 text-destructive"/> </Button> */}
                             </TableCell>
                         </TableRow>
                       ))

@@ -1,10 +1,12 @@
+
 import { notFound } from 'next/navigation';
-import { getDataById } from '@/services/database'; // Removed getRelationshipsBySourceId import as relationships are handled client-side
+import { getDataById } from '@/services/database';
 import { DataDetailView } from '@/components/data-detail-view';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft } from 'lucide-react';
+import type { DataEntry } from '@/services/types'; // Updated import path
 
 interface DataDetailPageProps {
   params: {
@@ -16,25 +18,27 @@ export const dynamic = 'force-dynamic'; // Ensure data is fetched on each reques
 
 export default async function DataDetailPage({ params }: DataDetailPageProps) {
   const { id } = params;
-  console.log(`[DataDetailPage] Rendering page for ID (from params): ${id} (Type: ${typeof id})`);
-  let dataEntry = null;
+  // Fetch data using the active dataset implicitly handled by getDataById
+  let dataEntry: DataEntry | null = null;
   let error: string | null = null;
+  let activeDatasetName: string | null = null; // To display the dataset name
 
   try {
-    console.log(`[DataDetailPage] Attempting to fetch data using getDataById with ID: ${id}`);
-    // Ensure ID is passed correctly (it should be a string from params)
-    dataEntry = await getDataById(id);
+    // Fetch the active dataset name first for context
+    activeDatasetName = await require('@/services/database').getActiveDatasetName();
+
+    console.log(`[DataDetailPage - Active: ${activeDatasetName}] Rendering page for ID: ${id}`);
+    dataEntry = await getDataById(id); // Fetches from the active dataset
 
     if (dataEntry) {
-        console.log(`[DataDetailPage] Successfully fetched data for ID: ${id}. Data:`, JSON.stringify(dataEntry));
+        console.log(`[DataDetailPage - Active: ${activeDatasetName}] Successfully fetched data for ID: ${id}.`);
     } else {
-        // This is the critical point for 404s
-        console.warn(`[DataDetailPage] getDataById returned null for ID: ${id}. This indicates the entry was not found in the current in-memory database session. Check if the server restarted after adding the data.`);
+        console.warn(`[DataDetailPage - Active: ${activeDatasetName}] getDataById returned null for ID: ${id}. Entry not found in this dataset.`);
     }
 
   } catch (e) {
-    console.error(`[DataDetailPage] Failed to fetch data for ID ${id}:`, e);
-    error = `Failed to load data for ID ${id}. Please try again later.`;
+    console.error(`[DataDetailPage - Active: ${activeDatasetName}] Failed to fetch data for ID ${id}:`, e);
+    error = `Failed to load data for ID ${id} from dataset '${activeDatasetName || 'N/A'}'.`;
     if (e instanceof Error) {
         error = `${error} Details: ${e.message}`;
     }
@@ -42,9 +46,7 @@ export default async function DataDetailPage({ params }: DataDetailPageProps) {
 
   // Trigger 404 if no error occurred BUT dataEntry is still null
   if (!error && !dataEntry) {
-     console.log(`[DataDetailPage] No data found for ID ${id} (getDataById returned null) and no fetch error occurred. Triggering notFound().`);
-     // This explicitly calls the Next.js notFound function, which renders the 404 page.
-     // It's the correct way to handle cases where the resource doesn't exist.
+     console.log(`[DataDetailPage - Active: ${activeDatasetName}] No data found for ID ${id}. Triggering notFound().`);
     notFound();
   }
 
@@ -58,18 +60,17 @@ export default async function DataDetailPage({ params }: DataDetailPageProps) {
       <Card>
         <CardHeader>
           <CardTitle>Data Details (ID: {id})</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Dataset: <span className="font-medium">{activeDatasetName || 'N/A'}</span>
+          </p>
         </CardHeader>
         <CardContent>
           {error ? (
             <p className="text-destructive">{error}</p>
           ) : dataEntry ? (
-            // Pass the fetched data to the client component for interaction
-            // Ensure the ID passed is consistent (string)
             <DataDetailView initialData={dataEntry} entryId={String(id)} />
           ) : (
-             // This fallback case should technically not be reached due to the notFound() call.
-             // Added just in case of unexpected logic flow.
-             <p className="text-destructive">Data entry not found (ID: {id}). It might have been removed or wasn't persisted due to server restart.</p>
+             <p className="text-destructive">Data entry not found (ID: {id}) in dataset '{activeDatasetName || 'N/A'}'.</p>
           )}
         </CardContent>
       </Card>

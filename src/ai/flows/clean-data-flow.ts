@@ -1,3 +1,4 @@
+
 // src/ai/flows/clean-data-flow.ts
 'use server';
 /**
@@ -9,8 +10,9 @@
  */
 
 import { ai } from '@/ai/ai-instance';
-import type { DataEntry } from '@/services/database'; // Assuming DataEntry can be represented by Zod any
+import type { DataEntry } from '@/services/types'; // Updated import path
 import { z } from 'genkit';
+import { json } from 'genkit/experimental'; // Import json helper
 
 // Define a flexible schema for input and output, as DataEntry is dynamic
 // Using z.record(z.string(), z.any()) allows any key-value pairs
@@ -26,6 +28,7 @@ const cleanDataPrompt = ai.definePrompt({
     schema: DataEntrySchema,
   },
   output: {
+    // Expect the LLM to output JSON directly based on the prompt instructions
     schema: DataEntrySchema,
   },
   prompt: `You are an expert data cleaning agent. Analyze the following JSON data entry and perform these cleaning tasks:
@@ -61,7 +64,8 @@ export const cleanDataFlow = ai.defineFlow<
 
     // Call the LLM prompt with the data entry
     const result = await cleanDataPrompt(dataEntry);
-    const cleanedOutput = result.output();
+    // Use .output directly as the schema should handle parsing
+    const cleanedOutput = result.output;
 
     if (!cleanedOutput) {
         console.error("Genkit Flow: LLM did not return valid output.");
@@ -69,12 +73,6 @@ export const cleanDataFlow = ai.defineFlow<
     }
 
     console.log("Genkit Flow: Returning cleaned data:", cleanedOutput);
-    // The output schema should already handle parsing the JSON string from the LLM
     return cleanedOutput;
   }
 );
-
-// Optional: Export a wrapper function if needed elsewhere, though actions can call the flow directly
-// export async function cleanDataEntry(input: CleanDataInput): Promise<CleanDataOutput> {
-//   return cleanDataFlow(input);
-// }

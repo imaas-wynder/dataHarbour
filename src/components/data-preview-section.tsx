@@ -1,66 +1,128 @@
+
 // src/components/data-preview-section.tsx
 "use client";
 
-import { useState, useTransition, useEffect } from "react"; // Added useEffect
+import { useState, useTransition, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { RefreshCw, Filter, X } from "lucide-react"; // Added Filter and X icons
+import { RefreshCw, Filter, X, Database } from "lucide-react"; // Added Database icon
 
-import type { DataEntry, RelationshipEntry } from "@/services/database"; // Import RelationshipEntry
+import type { DataEntry, RelationshipEntry } from "@/services/types";
 import { DataPreviewTable } from "@/components/data-preview-table";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input"; // Added Input
-import { Label } from "@/components/ui/label"; // Added Label
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"; // Added Alert
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"; // Added Select components
+import { setActiveDatasetAction } from "@/actions/data-actions"; // Import action to set active dataset
+
 
 interface DataPreviewSectionProps {
   initialData: DataEntry[];
-  initialRelationships: RelationshipEntry[]; // Add initial relationships prop
+  initialRelationships: RelationshipEntry[];
+  activeDatasetName: string | null; // Name of the currently active dataset
+  allDatasetNames: string[];       // List of all available dataset names
   error: string | null;
 }
 
-export function DataPreviewSection({ initialData, initialRelationships, error: initialError }: DataPreviewSectionProps) {
+export function DataPreviewSection({
+    initialData,
+    initialRelationships,
+    activeDatasetName: initialActiveName,
+    allDatasetNames,
+    error: initialError
+}: DataPreviewSectionProps) {
   const router = useRouter();
   const [isRefreshing, startRefreshTransition] = useTransition();
   const [isFiltering, startFilteringTransition] = useTransition();
+  const [isSwitchingDataset, startSwitchingDatasetTransition] = useTransition(); // Transition for dataset switch
+
   const [error, setError] = useState<string | null>(initialError);
   const [filterError, setFilterError] = useState<string | null>(null);
   const [filterSourceId, setFilterSourceId] = useState<string>('');
-  const [displayedData, setDisplayedData] = useState<DataEntry[]>(initialData); // State for data shown in table
-  // Use initialRelationships directly, removing the need for separate state management here.
+  const [displayedData, setDisplayedData] = useState<DataEntry[]>(initialData);
+  const [currentActiveName, setCurrentActiveName] = useState<string | null>(initialActiveName); // Local state for active name
+
   const { toast } = useToast();
 
-  // Update displayedData when initialData prop changes (e.g., after refresh or adding new data)
-  // This useEffect ensures that if the parent component re-renders with new 'initialData',
-  // the 'displayedData' state reflects these changes, especially after clearing filters.
+  // Update local state when props change
   useEffect(() => {
-    // Only reset displayedData if no filter is active
-    if (!filterSourceId) {
+    // Only reset displayedData if no filter is active OR if the active dataset name changed
+    if (!filterSourceId || currentActiveName !== initialActiveName) {
       setDisplayedData(initialData);
     }
-    // Clear general error if initialError is null (indicating successful fetch)
-    if (initialError === null) {
-        setError(null);
-    } else {
-        setError(initialError);
+    // Update local active name if prop changes
+    if (currentActiveName !== initialActiveName) {
+        setCurrentActiveName(initialActiveName);
     }
-   }, [initialData, initialError, filterSourceId]); // Depend on initialData, initialError, and filterSourceId
+    // Clear general error if initialError is null
+    setError(initialError);
+
+   }, [initialData, initialError, filterSourceId, initialActiveName, currentActiveName]);
+
+
+  // --- Dataset Switching ---
+  const handleDatasetChange = (newDatasetName: string) => {
+        if (newDatasetName === currentActiveName) return; // No change needed
+
+        setError(null); // Clear errors
+        setFilterError(null);
+        setFilterSourceId(''); // Clear filter when switching datasets
+
+        startSwitchingDatasetTransition(async () => {
+            try {
+                 console.log(`Switching active dataset to: ${newDatasetName}`);
+                 const result = await setActiveDatasetAction(newDatasetName);
+                 if (result.success) {
+                     toast({
+                         title: "Dataset Switched",
+                         description: result.message || `Dataset '${newDatasetName}' is now active. Refreshing data...`,
+                     });
+                     setCurrentActiveName(newDatasetName); // Update local state immediately
+                     // Trigger a full page refresh to load data for the new active dataset
+                     router.refresh();
+                 } else {
+                      setError(result.error || `Failed to switch to dataset '${newDatasetName}'.`);
+                      toast({
+                         variant: "destructive",
+                         title: "Switch Failed",
+                         description: result.error || `Could not switch to dataset '${newDatasetName}'.`,
+                      });
+                 }
+            } catch (e) {
+                 console.error("Dataset switch failed:", e);
+                 const errorMessage = e instanceof Error ? e.message : "Failed to switch dataset.";
+                 setError(errorMessage);
+                 toast({
+                   variant: "destructive",
+                   title: "Switch Error",
+                   description: errorMessage,
+                 });
+            }
+        });
+  };
 
 
   const handleRefresh = () => {
-    setError(null); // Clear previous errors on refresh attempt
-    setFilterError(null); // Clear filter error
-    setFilterSourceId(''); // Clear filter input
-    // Trigger refresh - this will cause the parent page to re-fetch and pass new props
+    setError(null);
+    setFilterError(null);
+    setFilterSourceId('');
     startRefreshTransition(() => {
       try {
-        router.refresh(); // Re-fetches data & relationships for the current route (page.tsx)
+        // Refresh the current route; this re-runs the server component (page.tsx)
+        // which fetches data for the *currently active* dataset.
+        router.refresh();
         toast({
           title: "Data Refreshed",
-          description: "The data preview has been updated.",
+          description: `Data for dataset '${currentActiveName || 'N/A'}' updated.`,
         });
-        // Note: displayedData will update via the useEffect when new initialData prop is received
       } catch (e) {
         console.error("Refresh failed:", e);
         const errorMessage = e instanceof Error ? e.message : "Failed to refresh data.";
@@ -85,45 +147,42 @@ export function DataPreviewSection({ initialData, initialRelationships, error: i
     setFilterError(null);
     startFilteringTransition(async () => {
       try {
-        // Use the initialRelationships prop directly for filtering
         const sourceIdStr = filterSourceId.trim();
         const targetIds = new Set(
-            initialRelationships // Use the prop directly
+            initialRelationships // Use the relationships passed for the current active dataset
             .filter(rel => String(rel.source_entry_id) === sourceIdStr)
             .map(rel => String(rel.target_entry_id))
         );
 
-        // Always filter based on the initialData prop to ensure consistency
+        // Filter based on the initialData for the current active dataset
         const sourceExists = initialData.some(entry => String(entry.id) === sourceIdStr);
 
         if (!sourceExists) {
-            setFilterError(`Source entry ID ${sourceIdStr} not found in the current dataset.`);
+            setFilterError(`Source entry ID ${sourceIdStr} not found in dataset '${currentActiveName || 'N/A'}.`);
             toast({
                 variant: "destructive",
                 title: "Filter Error",
-                description: `Source entry ID ${sourceIdStr} does not exist.`,
+                description: `Source entry ID ${sourceIdStr} does not exist in this dataset.`,
             });
-            setDisplayedData([]); // Show empty table
-            return; // Stop further processing
+            setDisplayedData([]);
+            return;
         }
-
 
         if (targetIds.size > 0) {
              const filteredResults = initialData.filter(entry => targetIds.has(String(entry.id)));
              setDisplayedData(filteredResults);
              toast({
                title: "Filter Applied",
-               description: `Showing ${filteredResults.length} entries related to source ID ${sourceIdStr}.`,
+               description: `Showing ${filteredResults.length} entries related to source ID ${sourceIdStr} in dataset '${currentActiveName || 'N/A'}'.`,
              });
         } else {
-             // Source exists, but no relationships found
-             setFilterError(`No relationships found originating from source ID ${sourceIdStr}.`);
+             setFilterError(`No relationships found originating from source ID ${sourceIdStr} in dataset '${currentActiveName || 'N/A'}.`);
              toast({
-                variant: "default", // Use default variant for "not found"
+                variant: "default",
                 title: "Filter Applied",
-                description: `No entries related to source ID ${sourceIdStr}.`,
+                description: `No entries related to source ID ${sourceIdStr} in this dataset.`,
              });
-             setDisplayedData([]); // Show empty table
+             setDisplayedData([]);
         }
 
       } catch (e) {
@@ -143,34 +202,64 @@ export function DataPreviewSection({ initialData, initialRelationships, error: i
   const handleClearFilter = () => {
     setFilterSourceId('');
     setFilterError(null);
-    setDisplayedData(initialData); // Reset to show all initial data from props
+    setDisplayedData(initialData); // Reset to show all data for the current active dataset
     toast({
       title: "Filter Cleared",
-      description: "Showing all data entries.",
+      description: `Showing all data for dataset '${currentActiveName || 'N/A'}'.`,
     });
   };
+
+    const isActionPending = isRefreshing || isFiltering || isSwitchingDataset;
 
 
   return (
     <Card>
       <CardHeader>
-        <div className="flex flex-row items-start justify-between space-x-4">
-           <div>
+        <div className="flex flex-col sm:flex-row items-start justify-between gap-4">
+           <div className="flex-grow">
                 <CardTitle>Data Preview</CardTitle>
-                <CardDescription className="mt-1">
-                    View recently uploaded data. Optionally filter by relationships.
+                <CardDescription className="mt-1 flex items-center gap-1">
+                   <Database className="h-4 w-4 text-muted-foreground" />
+                   <span>
+                       Active Dataset: <span className="font-medium text-foreground">{currentActiveName || 'None Selected'}</span>.
+                       View data and relationships below.
+                   </span>
                  </CardDescription>
            </div>
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={handleRefresh}
-            disabled={isRefreshing || isFiltering}
-            aria-label="Refresh Data"
-            className="flex-shrink-0"
-          >
-            <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-          </Button>
+           <div className="flex flex-shrink-0 gap-2 w-full sm:w-auto">
+                 {/* Dataset Selector */}
+                <Select
+                    value={currentActiveName ?? ''}
+                    onValueChange={handleDatasetChange}
+                    disabled={isActionPending || allDatasetNames.length === 0}
+                >
+                    <SelectTrigger className="w-full sm:w-[180px]" aria-label="Select Dataset">
+                        <SelectValue placeholder="Select Dataset" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        {allDatasetNames.length > 0 ? (
+                             allDatasetNames.map((name) => (
+                                <SelectItem key={name} value={name}>
+                                    {name}
+                                </SelectItem>
+                            ))
+                        ) : (
+                             <SelectItem value="nodata" disabled>No datasets available</SelectItem>
+                        )}
+                    </SelectContent>
+                </Select>
+                 {/* Refresh Button */}
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={handleRefresh}
+                disabled={isActionPending || !currentActiveName}
+                aria-label="Refresh Data"
+                title="Refresh data for the current dataset"
+              >
+                <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+              </Button>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -183,16 +272,16 @@ export function DataPreviewSection({ initialData, initialRelationships, error: i
                placeholder="Enter Source Entry ID"
                value={filterSourceId}
                onChange={(e) => setFilterSourceId(e.target.value)}
-               disabled={isFiltering || isRefreshing}
+               disabled={isActionPending || !currentActiveName}
                className="bg-background"
              />
            </div>
            <div className="flex gap-2 flex-shrink-0 w-full sm:w-auto">
-                <Button onClick={handleApplyFilter} disabled={isFiltering || isRefreshing || !filterSourceId.trim()} className="w-full sm:w-auto">
+                <Button onClick={handleApplyFilter} disabled={isActionPending || !filterSourceId.trim() || !currentActiveName} className="w-full sm:w-auto">
                   <Filter className="mr-2 h-4 w-4" />
                   {isFiltering ? "Filtering..." : "Filter"}
                 </Button>
-                 <Button variant="outline" onClick={handleClearFilter} disabled={isFiltering || isRefreshing} className="w-full sm:w-auto">
+                 <Button variant="outline" onClick={handleClearFilter} disabled={isActionPending || !currentActiveName} className="w-full sm:w-auto">
                   <X className="mr-2 h-4 w-4" />
                   Clear
                  </Button>
@@ -212,15 +301,18 @@ export function DataPreviewSection({ initialData, initialRelationships, error: i
             <AlertTitle>Loading Error</AlertTitle>
             <AlertDescription>{error}</AlertDescription>
           </Alert>
+        ) : !currentActiveName ? (
+             <Alert>
+               <AlertTitle>No Active Dataset</AlertTitle>
+               <AlertDescription>Please select or create a dataset using the controls above or the upload form.</AlertDescription>
+             </Alert>
         ) : (
-           // Pass displayedData and initialRelationships (from props) to the table
-           // displayedData reflects filtering based on initialData
-           // initialRelationships provides the source of truth for relationship lookups in the table
           <DataPreviewTable data={displayedData} relationships={initialRelationships} />
         )}
-        {(isRefreshing || isFiltering) && <p className="text-muted-foreground text-sm mt-2">{isRefreshing ? 'Refreshing data...' : 'Applying filter...'}</p>}
+        {isActionPending && <p className="text-muted-foreground text-sm mt-2">
+            {isRefreshing ? 'Refreshing data...' : isFiltering ? 'Applying filter...' : 'Switching dataset...'}
+        </p>}
       </CardContent>
     </Card>
   );
 }
-

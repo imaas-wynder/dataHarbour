@@ -1,10 +1,11 @@
+
 // src/components/data-upload-confirmation-dialog.tsx
 "use client";
 
-import { useState, useTransition, useEffect } from "react"; // Added useEffect
+import { useState, useTransition, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import type { DataEntry } from "@/services/database";
-import { uploadDataAction, updateDataAction, replaceDataAction } from "@/actions/data-actions"; // Added replaceDataAction
+import type { DataEntry } from "@/services/types"; // Import type
+import { uploadDataAction, updateDataAction, createNewDatasetAction } from "@/actions/data-actions"; // Use createNewDatasetAction
 import { useToast } from "@/hooks/use-toast";
 import {
   Dialog,
@@ -21,28 +22,31 @@ import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Loader2, Save, PlusCircle, Edit, FilePlus2 } from "lucide-react"; // Added FilePlus2
+import { Loader2, Save, PlusCircle, Edit, FilePlus2 } from "lucide-react";
 
 interface DataUploadConfirmationDialogProps {
   isOpen: boolean;
   onClose: () => void;
   data: DataEntry | DataEntry[] | null;
-  onProcessingChange: (isProcessing: boolean) => void; // To update parent form's state
+  onProcessingChange: (isProcessing: boolean) => void;
+  allDatasetNames: string[]; // Added prop to receive existing names
 }
 
-type UploadAction = "addNew" | "amend" | "createNew"; // Added "createNew"
+type UploadAction = "addNew" | "amend" | "createNew";
 
 export function DataUploadConfirmationDialog({
   isOpen,
   onClose,
   data,
   onProcessingChange,
+  allDatasetNames, // Use the prop
 }: DataUploadConfirmationDialogProps) {
   const router = useRouter();
   const { toast } = useToast();
   const [isPending, startTransition] = useTransition();
   const [actionType, setActionType] = useState<UploadAction>("addNew");
   const [amendTargetId, setAmendTargetId] = useState<string>("");
+  const [newDatasetName, setNewDatasetName] = useState<string>(""); // State for new dataset name
   const [error, setError] = useState<string | null>(null);
 
   // Reset state when dialog opens or data changes
@@ -50,6 +54,7 @@ export function DataUploadConfirmationDialog({
     if (isOpen) {
       setActionType("addNew");
       setAmendTargetId("");
+      setNewDatasetName(""); // Reset new dataset name
       setError(null);
     }
   }, [isOpen]);
@@ -61,7 +66,9 @@ export function DataUploadConfirmationDialog({
       return;
     }
 
-    // Basic validation for amend action
+    setError(null); // Clear previous errors
+
+    // Validation for 'amend' action
     if (actionType === "amend") {
       if (!amendTargetId.trim()) {
           setError("Target Entry ID is required to amend data.");
@@ -74,15 +81,30 @@ export function DataUploadConfirmationDialog({
           return;
       }
     }
-     // Basic validation for createNew action
-     if (actionType === "createNew" && !Array.isArray(data)) {
-        // Allow creating a new dataset from a single object, but maybe warn?
-        // For now, allow it. User might want a dataset with just one item.
-        // console.warn("Creating a new dataset from a single object.");
-     }
 
+    // Validation for 'createNew' action
+    if (actionType === "createNew") {
+        const trimmedName = newDatasetName.trim();
+        if (!trimmedName) {
+            setError("New Data Set Name is required.");
+            toast({ variant: "destructive", title: "Error", description: "Please enter a name for the new data set." });
+            return;
+        }
+        // Basic validation for potentially problematic characters (optional)
+        if (/[^a-zA-Z0-9-_ ]/.test(trimmedName)) {
+             setError("Dataset name contains invalid characters. Use letters, numbers, spaces, hyphens, or underscores.");
+             toast({ variant: "destructive", title: "Invalid Name", description: "Dataset name has invalid characters." });
+             return;
+        }
+         // Check if name already exists (case-insensitive check for robustness)
+         if (allDatasetNames.some(name => name.toLowerCase() === trimmedName.toLowerCase())) {
+            // Optionally allow replacement or show error - for now, show error
+            setError(`A data set named "${trimmedName}" already exists. Please choose a different name or amend existing data.`);
+            toast({ variant: "destructive", title: "Name Exists", description: `Data set "${trimmedName}" already exists.` });
+            return;
+         }
+    }
 
-    setError(null);
     onProcessingChange(true); // Signal parent that processing started
 
     startTransition(async () => {
@@ -90,18 +112,16 @@ export function DataUploadConfirmationDialog({
 
       try {
         if (actionType === "addNew") {
-          console.log("Dialog: Calling uploadDataAction (Add New)");
-          result = await uploadDataAction(data);
+          console.log("Dialog: Calling uploadDataAction (Add New to active dataset)");
+          result = await uploadDataAction(data); // Adds to the currently active dataset
         } else if (actionType === "amend"){
-          // Amend logic (already validated above)
-          console.log(`Dialog: Calling updateDataAction (Amend ID: ${amendTargetId})`);
-          // updateDataAction replaces the data at the target ID with the new data
-          result = await updateDataAction(amendTargetId.trim(), data as DataEntry); // Cast safe due to validation
+          console.log(`Dialog: Calling updateDataAction (Amend ID: ${amendTargetId} in active dataset)`);
+          result = await updateDataAction(amendTargetId.trim(), data as DataEntry); // Amends in the currently active dataset
         } else { // actionType === "createNew"
-            console.log("Dialog: Calling replaceDataAction (Create New Data Set)");
-             // Ensure data is passed correctly (might be single object or array)
             const dataToSend = Array.isArray(data) ? data : [data];
-            result = await replaceDataAction(dataToSend);
+            const datasetName = newDatasetName.trim();
+            console.log(`Dialog: Calling createNewDatasetAction (Create New: ${datasetName})`);
+            result = await createNewDatasetAction(datasetName, dataToSend); // Creates/replaces and sets as active
         }
 
         if (result.success) {
@@ -109,7 +129,7 @@ export function DataUploadConfirmationDialog({
             title: "Success",
             description: result.message || "Data processed successfully.",
           });
-          router.refresh(); // Refresh the page to show changes
+          router.refresh(); // Refresh to show changes (e.g., new active dataset, updated preview)
           onClose(); // Close the dialog on success
         } else {
           setError(result.error || "Failed to process data.");
@@ -134,22 +154,18 @@ export function DataUploadConfirmationDialog({
     });
   };
 
-  // Need to handle the case where the dialog is closed manually (X button or overlay click)
   const handleOpenChange = (open: boolean) => {
     if (!open) {
-        // If closing manually while pending, it might be abrupt.
-        // But generally, we just call the onClose provided by the parent.
         onClose();
     }
-    // We don't control 'open' directly here, it's controlled by the parent via 'isOpen' prop
   };
 
   const getConfirmButtonLabel = () => {
     if (isPending) return "Processing...";
     switch (actionType) {
-        case "addNew": return "Confirm Add New";
-        case "amend": return "Confirm Amend";
-        case "createNew": return "Confirm Create New";
+        case "addNew": return "Confirm Add to Active Set"; // Updated label
+        case "amend": return "Confirm Amend in Active Set"; // Updated label
+        case "createNew": return "Confirm Create New Set"; // Updated label
         default: return "Confirm";
     }
   }
@@ -167,7 +183,7 @@ export function DataUploadConfirmationDialog({
   const isConfirmDisabled = () => {
      if (isPending || !data) return true;
      if (actionType === 'amend' && (!amendTargetId.trim() || Array.isArray(data))) return true;
-     // No specific validation needed for createNew beyond having data
+     if (actionType === 'createNew' && !newDatasetName.trim()) return true; // Disable if name is empty
      return false;
   }
 
@@ -178,7 +194,7 @@ export function DataUploadConfirmationDialog({
         <DialogHeader>
           <DialogTitle>Confirm Data Upload</DialogTitle>
           <DialogDescription>
-            Review the data you uploaded and choose how to save it.
+            Review the data and choose how to save it.
           </DialogDescription>
         </DialogHeader>
 
@@ -196,46 +212,72 @@ export function DataUploadConfirmationDialog({
             className="flex flex-col space-y-1"
             disabled={isPending}
           >
+            {/* Add New Option */}
             <div className="flex items-center space-x-3 space-y-0">
               <RadioGroupItem value="addNew" id="r1" />
               <Label htmlFor="r1" className="font-normal cursor-pointer flex items-center gap-2">
-                <PlusCircle className="h-4 w-4 text-green-600" /> Add to Current Data Set
+                <PlusCircle className="h-4 w-4 text-green-600" /> Add to Active Data Set
               </Label>
             </div>
-             <p className="text-xs text-muted-foreground pl-8">Appends the uploaded entry/entries to the existing data.</p>
+             <p className="text-xs text-muted-foreground pl-8">Appends the uploaded entry/entries to the currently selected data set.</p>
 
+            {/* Amend Option */}
             <div className="flex items-center space-x-3 space-y-0 mt-2">
               <RadioGroupItem value="amend" id="r2" />
               <Label htmlFor="r2" className="font-normal cursor-pointer flex items-center gap-2">
-                 <Edit className="h-4 w-4 text-blue-600" /> Amend Existing Entry
+                 <Edit className="h-4 w-4 text-blue-600" /> Amend Entry in Active Set
               </Label>
             </div>
-            <p className="text-xs text-muted-foreground pl-8">Replaces the data of a specific entry ID with the uploaded JSON object (requires single object upload).</p>
+            <p className="text-xs text-muted-foreground pl-8">Replaces the data of a specific entry ID in the active data set (requires single object upload).</p>
 
 
+            {/* Create New Option */}
             <div className="flex items-center space-x-3 space-y-0 mt-2">
               <RadioGroupItem value="createNew" id="r3" />
               <Label htmlFor="r3" className="font-normal cursor-pointer flex items-center gap-2">
                  <FilePlus2 className="h-4 w-4 text-orange-600" /> Create New Data Set
               </Label>
             </div>
-             <p className="text-xs text-muted-foreground pl-8">Replaces the entire current data set with the uploaded data. All existing data and relationships will be removed.</p>
+             <p className="text-xs text-muted-foreground pl-8">Creates a new data set with the uploaded data and sets it as active. Existing data sets are kept.</p>
           </RadioGroup>
 
-          {actionType === "amend" && (
-            <div className="grid w-full max-w-sm items-center gap-1.5 pl-8">
-              <Label htmlFor="amend-id">Target Entry ID to Amend</Label>
-              <Input
-                id="amend-id"
-                type="text"
-                placeholder="Enter the ID of the entry to replace"
-                value={amendTargetId}
-                onChange={(e) => setAmendTargetId(e.target.value)}
-                disabled={isPending}
-                className="bg-background"
-              />
-            </div>
-          )}
+           {/* Conditional Inputs */}
+           <div className="pl-8 space-y-3">
+               {actionType === "amend" && (
+                 <div className="grid w-full max-w-sm items-center gap-1.5">
+                   <Label htmlFor="amend-id">Target Entry ID to Amend</Label>
+                   <Input
+                     id="amend-id"
+                     type="text"
+                     placeholder="Enter the ID of the entry to replace"
+                     value={amendTargetId}
+                     onChange={(e) => setAmendTargetId(e.target.value)}
+                     disabled={isPending}
+                     className="bg-background"
+                   />
+                 </div>
+               )}
+
+               {actionType === "createNew" && (
+                 <div className="grid w-full max-w-sm items-center gap-1.5">
+                   <Label htmlFor="new-dataset-name">New Data Set Name</Label>
+                   <Input
+                     id="new-dataset-name"
+                     type="text"
+                     placeholder="Enter a unique name"
+                     value={newDatasetName}
+                     onChange={(e) => setNewDatasetName(e.target.value)}
+                     disabled={isPending}
+                     className="bg-background"
+                     aria-describedby="new-dataset-name-desc"
+                   />
+                   <p id="new-dataset-name-desc" className="text-xs text-muted-foreground">
+                     Must be unique. Allowed: letters, numbers, space, -, _
+                   </p>
+                 </div>
+               )}
+           </div>
+
 
           {error && (
             <Alert variant="destructive">

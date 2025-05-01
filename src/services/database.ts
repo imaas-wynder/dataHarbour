@@ -1,98 +1,267 @@
-/**
- * Represents a data entry to be stored in the database.
- * Structure can be flexible.
- */
-export interface DataEntry {
-  id?: number | string; // Optional ID, might be assigned by DB
-  [key: string]: any; // Allows for dynamic keys and any value type
-}
 
-/**
- * Represents a relationship between two data entries.
- */
-export interface RelationshipEntry {
-    id?: number; // Primary key for the relationship itself
-    source_entry_id: number | string;
-    target_entry_id: number | string;
-    created_at?: string | Date;
-}
-
+import { DataEntry, RelationshipEntry } from './types'; // Import types from a separate file
 
 // ========================================================================
 // ==                         IMPORTANT NOTE                           ==
 // ========================================================================
 // This service uses an **IN-MEMORY** simulated database.
-// - Data added or modified using `addData`, `updateDataById`, `addRelationship`
-//   is stored ONLY in the server's memory for the current session.
-// - **ALL CHANGES WILL BE LOST** whenever the server restarts. This includes:
-//    - Stopping and starting the development server (`npm run dev`).
-//    - Automatic server restarts caused by file changes during development (hot-reloading).
-// - The initial `simulatedDatabase` array provides starting data that persists
-//   across restarts (because it's hardcoded), but any runtime additions do not.
-// - For persistent storage, replace this simulated implementation with a connection
-//   to a real database (e.g., PostgreSQL, Firestore, MongoDB).
+// - Data added or modified is stored ONLY in the server's memory.
+// - **ALL CHANGES WILL BE LOST** whenever the server restarts.
+// - For persistent storage, replace this simulated implementation.
 // ========================================================================
 
-let simulatedDatabase: DataEntry[] = [
-   { id: 1, name: 'Simulated Example Data', value: 123, timestamp: new Date().toISOString(), details: 'Some initial details' },
-   { id: 2, name: 'Another Simulated Entry', value: 456, category: 'Test', timestamp: new Date().toISOString(), email: ' test@example.com ', inconsistent_value: ' yes '},
-   { id: 3, complex: { nested: true, arr: [1, 2] }, description: 'Complex object example', timestamp: new Date().toISOString(), status: 'pending' },
- ];
-let nextId = 4; // Next ID to assign for new entries
-
-let simulatedRelationships: RelationshipEntry[] = [];
-let nextRelationshipId = 1; // Next ID for new relationships
 
 /**
- * Asynchronously adds a data entry to the simulated database.
- * IMPORTANT: Adds data to the in-memory array for the *current* server session only.
+ * Structure to hold data and relationships for a single named dataset.
+ */
+interface Dataset {
+    data: DataEntry[];
+    relationships: RelationshipEntry[];
+    nextDataId: number;
+    nextRelationshipId: number;
+}
+
+// Store multiple datasets, identified by unique names
+let datasets: Map<string, Dataset> = new Map();
+// Name of the currently active dataset for operations
+let activeDatasetName: string | null = null;
+
+// --- Initialization ---
+
+/**
+ * Calculates the next available ID based on the maximum numeric ID found in the data.
+ * @param data Array of DataEntry objects.
+ * @returns The next integer ID to use.
+ */
+function calculateNextId(data: DataEntry[]): number {
+    let maxId = 0;
+    data.forEach(entry => {
+        if (entry.id !== undefined && entry.id !== null) {
+            const numericId = Number(entry.id);
+            if (!isNaN(numericId) && Number.isInteger(numericId) && numericId > maxId) {
+                maxId = numericId;
+            }
+        }
+    });
+    return maxId + 1;
+}
+
+/**
+ * Initializes the default dataset if no datasets exist.
+ */
+function initializeDefaultDataset() {
+    if (datasets.size === 0) {
+        console.log('[Database Service] Initializing default dataset...');
+        const initialDefaultData: DataEntry[] = [
+            { id: 1, name: 'Simulated Example Data', value: 123, timestamp: new Date().toISOString(), details: 'Some initial details' },
+            { id: 2, name: 'Another Simulated Entry', value: 456, category: 'Test', timestamp: new Date().toISOString(), email: ' test@example.com ', inconsistent_value: ' yes '},
+            { id: 3, complex: { nested: true, arr: [1, 2] }, description: 'Complex object example', timestamp: new Date().toISOString(), status: 'pending' },
+        ];
+        const initialDefaultRelationships: RelationshipEntry[] = [];
+        const nextDataId = calculateNextId(initialDefaultData);
+        const nextRelationshipId = 1; // Assuming relationships start at 1
+
+        datasets.set("default", {
+            data: JSON.parse(JSON.stringify(initialDefaultData)),
+            relationships: JSON.parse(JSON.stringify(initialDefaultRelationships)),
+            nextDataId: nextDataId,
+            nextRelationshipId: nextRelationshipId
+        });
+        activeDatasetName = "default";
+        console.log(`[Database Service] Default dataset 'default' created. Active dataset set to 'default'. Next data ID: ${nextDataId}`);
+    } else if (!activeDatasetName || !datasets.has(activeDatasetName)) {
+        // If there are datasets but no active one (or active one is invalid), set the first one as active
+        activeDatasetName = datasets.keys().next().value || null;
+        console.log(`[Database Service] Setting active dataset to '${activeDatasetName}'`);
+    }
+}
+
+// Initialize on load
+initializeDefaultDataset();
+
+// --- Helper Functions ---
+
+/**
+ * Gets the currently active dataset object.
+ * @returns The active Dataset object or null if no dataset is active or found.
+ */
+function getActiveDataset(): Dataset | null {
+    if (!activeDatasetName) {
+        console.warn('[Database Service] No active dataset selected.');
+        // Attempt to set a default if possible
+        if (datasets.size > 0) {
+             setActiveDataset(datasets.keys().next().value);
+             if(activeDatasetName) return datasets.get(activeDatasetName) ?? null;
+        }
+        return null;
+    }
+    const dataset = datasets.get(activeDatasetName);
+    if (!dataset) {
+        console.error(`[Database Service] Active dataset '${activeDatasetName}' not found in map.`);
+        // Attempt recovery: set active name to null and try to initialize/set a default
+        activeDatasetName = null;
+        initializeDefaultDataset(); // This might set a new active dataset
+        if(activeDatasetName) return datasets.get(activeDatasetName) ?? null;
+        return null;
+    }
+    return dataset;
+}
+
+// --- Public API ---
+
+/**
+ * Sets the active dataset for subsequent operations.
+ * @param name The name of the dataset to activate.
+ * @returns True if the dataset exists and was set as active, false otherwise.
+ */
+export async function setActiveDataset(name: string): Promise<boolean> {
+    console.log(`[setActiveDataset Service] Attempting to set active dataset to: ${name}`);
+    await new Promise(resolve => setTimeout(resolve, 50)); // Simulate async
+    if (datasets.has(name)) {
+        activeDatasetName = name;
+        console.log(`[setActiveDataset Service] Active dataset is now: ${activeDatasetName}`);
+        return true;
+    } else {
+        console.warn(`[setActiveDataset Service] Dataset '${name}' not found. Active dataset remains '${activeDatasetName}'.`);
+        return false;
+    }
+}
+
+/**
+ * Gets the name of the currently active dataset.
+ * @returns The name of the active dataset or null if none is active.
+ */
+export async function getActiveDatasetName(): Promise<string | null> {
+     console.log(`[getActiveDatasetName Service] Returning active dataset name: ${activeDatasetName}`);
+    return activeDatasetName;
+}
+
+/**
+ * Gets the names of all available datasets.
+ * @returns A promise resolving to an array of dataset names.
+ */
+export async function getAllDatasetNames(): Promise<string[]> {
+    console.log('[getAllDatasetNames Service] Fetching all dataset names...');
+    await new Promise(resolve => setTimeout(resolve, 50)); // Simulate async
+    const names = Array.from(datasets.keys());
+    console.log(`[getAllDatasetNames Service] Returning names: [${names.join(', ')}]`);
+    return names;
+}
+
+/**
+ * Creates a new, empty dataset or replaces an existing one with the provided initial data.
+ * Sets the newly created/replaced dataset as the active one.
+ *
+ * @param name The name for the new dataset.
+ * @param initialData The initial array of DataEntry objects for the dataset.
+ * @returns A promise resolving to true if creation/replacement was successful, false otherwise.
+ */
+export async function createOrReplaceDataset(name: string, initialData: DataEntry[]): Promise<boolean> {
+    console.log(`[createOrReplaceDataset Service] Called for name: ${name}. Initial data count: ${initialData.length}`);
+    try {
+        await new Promise(resolve => setTimeout(resolve, 250)); // Simulate delay
+
+        if (!name || typeof name !== 'string' || name.trim().length === 0) {
+             console.error('[createOrReplaceDataset Service] Invalid dataset name provided.');
+             return false;
+        }
+        const trimmedName = name.trim();
+
+        // Calculate next ID based on the provided initial data
+        const nextDataId = calculateNextId(initialData);
+
+        // Assign IDs to entries that don't have one, using a mutable copy
+        let currentNextId = nextDataId;
+        const processedData = initialData.map(entry => {
+            if (entry.id === undefined || entry.id === null) {
+                 // Create a new object to avoid mutating the original `initialData` array elements
+                return { ...entry, id: currentNextId++ };
+            }
+             // Create a new object even if ID exists to ensure deep copy
+            return { ...entry };
+        });
+
+         // Create the new dataset structure
+         const newDataset: Dataset = {
+             data: JSON.parse(JSON.stringify(processedData)), // Deep copy processed data
+             relationships: [],
+             nextDataId: currentNextId, // Use the updated next ID counter
+             nextRelationshipId: 1
+         };
+
+         datasets.set(trimmedName, newDataset);
+         activeDatasetName = trimmedName; // Set the new dataset as active
+
+         console.log(`[createOrReplaceDataset Service] Dataset '${trimmedName}' created/replaced and set as active.`);
+         console.log(`[createOrReplaceDataset Service] New dataset size: ${newDataset.data.length}, Relationships: ${newDataset.relationships.length}`);
+         console.log(`[createOrReplaceDataset Service] Next data ID for '${trimmedName}': ${newDataset.nextDataId}`);
+         console.log(`[createOrReplaceDataset Service] Total datasets now: ${datasets.size}`);
+         return true;
+    } catch (error) {
+        console.error(`[createOrReplaceDataset Service] Error creating/replacing dataset '${name}':`, error);
+        return false;
+    }
+}
+
+
+/**
+ * Asynchronously adds a data entry to the *active* simulated dataset.
  * Data will be lost if the server restarts.
  *
  * @param data The data entry or array of entries to add.
  * @returns A promise that resolves to true if the operation was successful, false otherwise.
  */
 export async function addData(data: DataEntry | DataEntry[]): Promise<boolean> {
-  console.log('[addData Service] Called with:', JSON.stringify(data).substring(0, 100) + '...');
+  const activeDataset = getActiveDataset();
+  if (!activeDataset) {
+      console.error('[addData Service] Cannot add data, no active dataset.');
+      return false;
+  }
+  console.log(`[addData Service - Active: ${activeDatasetName}] Called with data:`, JSON.stringify(data).substring(0, 100) + '...');
+
   try {
     await new Promise(resolve => setTimeout(resolve, 150)); // Simulate network delay
 
     if (Array.isArray(data)) {
         data.forEach(entry => {
-            // Assign new ID only if one isn't provided
-            const newEntry = { ...entry, id: entry.id ?? nextId++ };
-            simulatedDatabase.push(newEntry);
-            console.log(`[addData Service] Added entry with ID: ${newEntry.id}`);
+            const newEntry = { ...entry, id: entry.id ?? activeDataset.nextDataId++ };
+            activeDataset.data.push(newEntry);
+            console.log(`[addData Service - Active: ${activeDatasetName}] Added entry with ID: ${newEntry.id}`);
         });
     } else {
-        const newEntry = { ...data, id: data.id ?? nextId++ };
-        simulatedDatabase.push(newEntry);
-        console.log(`[addData Service] Added entry with ID: ${newEntry.id}`);
+        const newEntry = { ...data, id: data.id ?? activeDataset.nextDataId++ };
+        activeDataset.data.push(newEntry);
+        console.log(`[addData Service - Active: ${activeDatasetName}] Added entry with ID: ${newEntry.id}`);
     }
-    console.log('[addData Service] Current simulated DB size:', simulatedDatabase.length);
-    console.log(`[addData Service] Current IDs in DB: [${simulatedDatabase.map(e => String(e.id)).join(', ')}]`);
+    console.log(`[addData Service - Active: ${activeDatasetName}] Current data count: ${activeDataset.data.length}. Next ID: ${activeDataset.nextDataId}`);
+    console.log(`[addData Service - Active: ${activeDatasetName}] Current IDs: [${activeDataset.data.map(e => String(e.id)).join(', ')}]`);
     return true;
 
   } catch (error) {
-    console.error('[addData Service] Error:', error);
+    console.error(`[addData Service - Active: ${activeDatasetName}] Error:`, error);
     return false;
   }
 }
 
 /**
- * Asynchronously fetches all data entries from the simulated database.
- * Retrieves data currently held in the in-memory store for the active server session.
+ * Asynchronously fetches all data entries from the *active* simulated dataset.
  *
- * @returns A promise that resolves to an array of DataEntry objects.
- * @throws {Error} If the operation fails.
+ * @returns A promise that resolves to an array of DataEntry objects from the active dataset.
+ * @throws {Error} If the operation fails or no dataset is active.
  */
 export async function getAllData(): Promise<DataEntry[]> {
-   console.log('[getAllData Service] Called');
-  try {
-     console.log('[getAllData Service] Returning current simulated data. Count:', simulatedDatabase.length);
+   const activeDataset = getActiveDataset();
+   if (!activeDataset) {
+       console.error('[getAllData Service] No active dataset to fetch from.');
+       throw new Error('No active dataset selected.');
+   }
+   console.log(`[getAllData Service - Active: ${activeDatasetName}] Called`);
+   try {
+     console.log(`[getAllData Service - Active: ${activeDatasetName}] Returning ${activeDataset.data.length} entries.`);
      await new Promise(resolve => setTimeout(resolve, 300)); // Simulate network delay
-     return JSON.parse(JSON.stringify(simulatedDatabase));
+     return JSON.parse(JSON.stringify(activeDataset.data));
    } catch (error) {
-     console.error('[getAllData Service] Error:', error);
+     console.error(`[getAllData Service - Active: ${activeDatasetName}] Error:`, error);
      if (error instanceof Error) {
        throw new Error(`Failed to fetch data: ${error.message}`);
      }
@@ -101,107 +270,105 @@ export async function getAllData(): Promise<DataEntry[]> {
 }
 
 /**
- * Asynchronously fetches a single data entry by its ID from the simulated database.
- * Retrieves data currently held in the in-memory store for the active server session.
- * If you get a 404 for newly added data, ensure the server hasn't restarted since adding it.
+ * Asynchronously fetches a single data entry by its ID from the *active* simulated dataset.
  *
- * @param id The ID of the data entry to fetch (can be string from URL param or number).
+ * @param id The ID of the data entry to fetch.
  * @returns A promise that resolves to the DataEntry object or null if not found.
- * @throws {Error} If the operation fails.
+ * @throws {Error} If the operation fails or no dataset is active.
  */
 export async function getDataById(id: number | string): Promise<DataEntry | null> {
-  const searchId = String(id);
-  console.log(`[getDataById Service] Called for ID: ${searchId}`);
-  console.log(`[getDataById Service] Current simulatedDatabase state before search (IDs): [${simulatedDatabase.map(e => String(e.id)).join(', ')}]`);
-  try {
-    await new Promise(resolve => setTimeout(resolve, 100)); // Simulate network delay
-
-    const entry = simulatedDatabase.find(entry => {
-        const entryIdStr = String(entry.id);
-        //console.log(`[getDataById Service] Comparing: Stored ID "${entryIdStr}" (Type: ${typeof entryIdStr}) vs Search ID "${searchId}" (Type: ${typeof searchId}) => Match: ${entryIdStr === searchId}`);
-        return entryIdStr === searchId;
-    });
-
-    if (entry) {
-        console.log(`[getDataById Service] Found entry for ID ${searchId}.`);
-        return JSON.parse(JSON.stringify(entry));
-    } else {
-        console.warn(`[getDataById Service] Entry not found for ID ${searchId}. Current DB IDs: [${simulatedDatabase.map(e => String(e.id)).join(', ')}]. This is expected if the server restarted after data was added.`);
-        return null;
+    const activeDataset = getActiveDataset();
+    if (!activeDataset) {
+        console.error(`[getDataById Service] No active dataset to fetch from.`);
+        throw new Error('No active dataset selected.');
     }
-  } catch (error) {
-    console.error(`[getDataById Service] Error fetching data for ID ${searchId}:`, error);
-    if (error instanceof Error) {
-      throw new Error(`Failed to fetch data for ID ${searchId}: ${error.message}`);
+    const searchId = String(id);
+    console.log(`[getDataById Service - Active: ${activeDatasetName}] Called for ID: ${searchId}`);
+    console.log(`[getDataById Service - Active: ${activeDatasetName}] Data IDs: [${activeDataset.data.map(e => String(e.id)).join(', ')}]`);
+    try {
+        await new Promise(resolve => setTimeout(resolve, 100)); // Simulate network delay
+        const entry = activeDataset.data.find(entry => String(entry.id) === searchId);
+
+        if (entry) {
+            console.log(`[getDataById Service - Active: ${activeDatasetName}] Found entry for ID ${searchId}.`);
+            return JSON.parse(JSON.stringify(entry));
+        } else {
+            console.warn(`[getDataById Service - Active: ${activeDatasetName}] Entry not found for ID ${searchId}.`);
+            return null;
+        }
+    } catch (error) {
+        console.error(`[getDataById Service - Active: ${activeDatasetName}] Error for ID ${searchId}:`, error);
+        if (error instanceof Error) {
+            throw new Error(`Failed to fetch data for ID ${searchId}: ${error.message}`);
+        }
+        throw new Error(`An unknown error occurred while fetching data for ID ${searchId}.`);
     }
-    throw new Error(`An unknown error occurred while fetching data for ID ${searchId}.`);
-  }
 }
 
 /**
- * Asynchronously fetches multiple data entries by their IDs from the simulated database.
- * Retrieves data currently held in the in-memory store for the active server session.
+ * Asynchronously fetches multiple data entries by their IDs from the *active* simulated dataset.
  *
- * @param ids An array of IDs (string or number) of the data entries to fetch.
+ * @param ids An array of IDs of the data entries to fetch.
  * @returns A promise that resolves to an array of DataEntry objects found.
- * @throws {Error} If the operation fails.
+ * @throws {Error} If the operation fails or no dataset is active.
  */
 export async function getDataByIds(ids: (number | string)[]): Promise<DataEntry[]> {
-  const searchIds = ids.map(String); // Normalize all search IDs to strings
-  console.log(`[getDataByIds Service] Called for IDs: [${searchIds.join(', ')}]`);
-  console.log(`[getDataByIds Service] Current simulatedDatabase state before search (IDs): [${simulatedDatabase.map(e => String(e.id)).join(', ')}]`);
-  try {
-    await new Promise(resolve => setTimeout(resolve, 150)); // Simulate network delay
-
-    const entries = simulatedDatabase.filter(entry => {
-        const entryIdStr = String(entry.id);
-        const isIncluded = searchIds.includes(entryIdStr);
-        // console.log(`[getDataByIds Service] Checking entry ID "${entryIdStr}": Included in [${searchIds.join(', ')}]? ${isIncluded}`);
-        return isIncluded;
-    });
-
-    console.log(`[getDataByIds Service] Found ${entries.length} entries for IDs [${searchIds.join(', ')}].`);
-    return JSON.parse(JSON.stringify(entries));
-  } catch (error) {
-    console.error(`[getDataByIds Service] Error fetching data for IDs [${searchIds.join(', ')}]:`, error);
-    if (error instanceof Error) {
-      throw new Error(`Failed to fetch data for multiple IDs: ${error.message}`);
+    const activeDataset = getActiveDataset();
+    if (!activeDataset) {
+        console.error(`[getDataByIds Service] No active dataset to fetch from.`);
+        throw new Error('No active dataset selected.');
     }
-    throw new Error('An unknown error occurred while fetching data for multiple IDs.');
-  }
+    const searchIds = ids.map(String);
+    console.log(`[getDataByIds Service - Active: ${activeDatasetName}] Called for IDs: [${searchIds.join(', ')}]`);
+    console.log(`[getDataByIds Service - Active: ${activeDatasetName}] Data IDs: [${activeDataset.data.map(e => String(e.id)).join(', ')}]`);
+    try {
+        await new Promise(resolve => setTimeout(resolve, 150)); // Simulate network delay
+        const entries = activeDataset.data.filter(entry => searchIds.includes(String(entry.id)));
+
+        console.log(`[getDataByIds Service - Active: ${activeDatasetName}] Found ${entries.length} entries for IDs [${searchIds.join(', ')}].`);
+        return JSON.parse(JSON.stringify(entries));
+    } catch (error) {
+        console.error(`[getDataByIds Service - Active: ${activeDatasetName}] Error for IDs [${searchIds.join(', ')}]:`, error);
+        if (error instanceof Error) {
+            throw new Error(`Failed to fetch data for multiple IDs: ${error.message}`);
+        }
+        throw new Error('An unknown error occurred while fetching data for multiple IDs.');
+    }
 }
 
-
 /**
- * Asynchronously updates a data entry by its ID in the simulated database.
- * Updates data currently held in the in-memory store for the active server session.
- * Changes will be lost if the server restarts.
+ * Asynchronously updates a data entry by its ID in the *active* simulated dataset.
  *
  * @param id The ID of the data entry to update.
  * @param updatedData The partial or full data to update the entry with.
  * @returns A promise that resolves to true if the update was successful, false otherwise.
- * @throws {Error} If the operation fails.
+ * @throws {Error} If the operation fails or no dataset is active.
  */
 export async function updateDataById(id: number | string, updatedData: Partial<DataEntry>): Promise<boolean> {
+    const activeDataset = getActiveDataset();
+    if (!activeDataset) {
+        console.error(`[updateDataById Service] Cannot update data, no active dataset.`);
+        throw new Error('No active dataset selected.');
+    }
     const updateId = String(id);
-    console.log(`[updateDataById Service] Called for ID: ${updateId} with data:`, JSON.stringify(updatedData).substring(0, 100) + '...');
+    console.log(`[updateDataById Service - Active: ${activeDatasetName}] Called for ID: ${updateId} with data:`, JSON.stringify(updatedData).substring(0, 100) + '...');
     try {
         await new Promise(resolve => setTimeout(resolve, 200)); // Simulate network delay
-        const index = simulatedDatabase.findIndex(entry => String(entry.id) === updateId);
+        const index = activeDataset.data.findIndex(entry => String(entry.id) === updateId);
 
         if (index !== -1) {
-            const currentEntry = simulatedDatabase[index];
+            const currentEntry = activeDataset.data[index];
             const dataToMerge = { ...updatedData };
-            delete dataToMerge.id; // Ensure we don't overwrite the ID with undefined if it was in updatedData
-            simulatedDatabase[index] = { ...currentEntry, ...dataToMerge };
-            console.log('[updateDataById Service] Successfully updated entry:', simulatedDatabase[index]);
+            delete dataToMerge.id; // Ensure we don't overwrite the ID
+            activeDataset.data[index] = { ...currentEntry, ...dataToMerge };
+            console.log(`[updateDataById Service - Active: ${activeDatasetName}] Successfully updated entry:`, activeDataset.data[index]);
             return true;
         } else {
-            console.warn(`[updateDataById Service] Entry not found for update (ID: ${updateId}). Current DB IDs: [${simulatedDatabase.map(e => String(e.id)).join(', ')}]`);
+            console.warn(`[updateDataById Service - Active: ${activeDatasetName}] Entry not found for update (ID: ${updateId}).`);
             return false;
         }
     } catch (error) {
-        console.error(`[updateDataById Service] Error for ID ${updateId}:`, error);
+        console.error(`[updateDataById Service - Active: ${activeDatasetName}] Error for ID ${updateId}:`, error);
         if (error instanceof Error) {
             throw new Error(`Failed to update data for ID ${updateId}: ${error.message}`);
         }
@@ -209,118 +376,66 @@ export async function updateDataById(id: number | string, updatedData: Partial<D
     }
 }
 
-/**
- * Replaces the entire in-memory database with the provided data set.
- * Resets the relationships table and the next ID counter.
- * IMPORTANT: This operation is destructive and data will be lost on server restart.
- *
- * @param newData The array of DataEntry objects to set as the new database content.
- * @returns A promise that resolves to true if the replacement was successful, false otherwise.
- */
-export async function replaceDatabase(newData: DataEntry[]): Promise<boolean> {
-  console.log('[replaceDatabase Service] Called. New data count:', newData.length);
-  try {
-    await new Promise(resolve => setTimeout(resolve, 250)); // Simulate delay
-
-    let maxId = 0;
-    // Determine the highest numeric ID in the incoming data to set the nextId correctly
-    newData.forEach(entry => {
-        if (entry.id !== undefined && entry.id !== null) {
-            const numericId = Number(entry.id);
-            if (!isNaN(numericId) && numericId > maxId) {
-                maxId = numericId;
-            }
-        }
-    });
-    nextId = maxId + 1; // Start next ID after the max found ID
-
-    // Assign IDs to entries that don't have one, starting from the calculated nextId
-    const processedData = newData.map((entry) => {
-        if (entry.id === undefined || entry.id === null) {
-            return { ...entry, id: nextId++ };
-        }
-        return { ...entry }; // Keep existing ID
-    });
-
-    simulatedDatabase = JSON.parse(JSON.stringify(processedData)); // Deep copy
-
-    simulatedRelationships = [];
-    nextRelationshipId = 1;
-
-    console.log('[replaceDatabase Service] Database replaced. New size:', simulatedDatabase.length);
-    console.log('[replaceDatabase Service] Relationships cleared.');
-    console.log('[replaceDatabase Service] Next data ID set to:', nextId);
-    console.log(`[replaceDatabase Service] Current IDs in DB: [${simulatedDatabase.map(e => String(e.id)).join(', ')}]`);
-    return true;
-  } catch (error) {
-    console.error('[replaceDatabase Service] Error:', error);
-    return false;
-  }
-}
-
 
 /**
- * Asynchronously adds a relationship between two data entries in the simulated store.
- * Relationships added here are in-memory and will be lost on server restart.
+ * Asynchronously adds a relationship between two data entries in the *active* simulated dataset.
  *
  * @param sourceEntryId The ID of the source entry.
- * @param targetEntryId The ID of the target entry to relate.
+ * @param targetEntryId The ID of the target entry.
  * @returns A promise that resolves to the newly created RelationshipEntry or null if failed.
- * @throws {Error} If the operation fails.
+ * @throws {Error} If the operation fails or no dataset is active.
  */
 export async function addRelationship(sourceEntryId: number | string, targetEntryId: number | string): Promise<RelationshipEntry | null> {
+    const activeDataset = getActiveDataset();
+    if (!activeDataset) {
+        console.error(`[addRelationship Service] Cannot add relationship, no active dataset.`);
+        throw new Error('No active dataset selected.');
+    }
     const sourceIdStr = String(sourceEntryId);
     const targetIdStr = String(targetEntryId);
-    console.log(`[addRelationship Service] Called: Source ${sourceIdStr}, Target ${targetIdStr}`);
-    console.log(`[addRelationship Service] Current relationships before add:`, JSON.stringify(simulatedRelationships));
+    console.log(`[addRelationship Service - Active: ${activeDatasetName}] Called: Source ${sourceIdStr}, Target ${targetIdStr}`);
+    console.log(`[addRelationship Service - Active: ${activeDatasetName}] Relationships before:`, JSON.stringify(activeDataset.relationships));
     try {
         await new Promise(resolve => setTimeout(resolve, 100)); // Simulate network delay
 
-        // Verify both source and target entries exist in the current data
-        const sourceExists = simulatedDatabase.some(entry => String(entry.id) === sourceIdStr);
-        const targetExists = simulatedDatabase.some(entry => String(entry.id) === targetIdStr);
+        const sourceExists = activeDataset.data.some(entry => String(entry.id) === sourceIdStr);
+        const targetExists = activeDataset.data.some(entry => String(entry.id) === targetIdStr);
 
         if (!sourceExists) {
-            console.warn(`[addRelationship Service] Failed: Source entry ID ${sourceIdStr} not found. Current DB IDs: [${simulatedDatabase.map(e => String(e.id)).join(', ')}]`);
+            console.warn(`[addRelationship Service - Active: ${activeDatasetName}] Failed: Source ID ${sourceIdStr} not found.`);
             return null;
         }
         if (!targetExists) {
-             console.warn(`[addRelationship Service] Failed: Target entry ID ${targetIdStr} not found. Current DB IDs: [${simulatedDatabase.map(e => String(e.id)).join(', ')}]`);
+             console.warn(`[addRelationship Service - Active: ${activeDatasetName}] Failed: Target ID ${targetIdStr} not found.`);
              return null;
         }
-
-         // Check for self-referencing relationship
         if (sourceIdStr === targetIdStr) {
-            console.warn(`[addRelationship Service] Failed: Cannot add self-referencing relationship for ID ${sourceIdStr}.`);
+            console.warn(`[addRelationship Service - Active: ${activeDatasetName}] Failed: Cannot add self-referencing relationship for ID ${sourceIdStr}.`);
             return null;
         }
 
-        // Check if this exact relationship already exists
-        const existingRelationship = simulatedRelationships.find(
-            rel => String(rel.source_entry_id) === sourceIdStr &&
-                   String(rel.target_entry_id) === targetIdStr
+        const existingRelationship = activeDataset.relationships.find(
+            rel => String(rel.source_entry_id) === sourceIdStr && String(rel.target_entry_id) === targetIdStr
         );
 
         if (existingRelationship) {
-            console.warn(`[addRelationship Service] Relationship from ${sourceIdStr} to ${targetIdStr} already exists. Returning existing.`);
-            return JSON.parse(JSON.stringify(existingRelationship)); // Return copy of existing
+            console.warn(`[addRelationship Service - Active: ${activeDatasetName}] Relationship ${sourceIdStr} -> ${targetIdStr} already exists.`);
+            return JSON.parse(JSON.stringify(existingRelationship));
         }
 
-
-        // Create and add the new relationship
         const newRelationship: RelationshipEntry = {
-            id: nextRelationshipId++,
-            source_entry_id: sourceEntryId, // Store original type if needed, but compare as strings
+            id: activeDataset.nextRelationshipId++,
+            source_entry_id: sourceEntryId,
             target_entry_id: targetEntryId,
             created_at: new Date().toISOString(),
         };
-        simulatedRelationships.push(newRelationship);
-        console.log('[addRelationship Service] Successfully added new relationship:', newRelationship);
-        console.log('[addRelationship Service] Current simulated relationships count:', simulatedRelationships.length);
-        console.log(`[addRelationship Service] Current relationships after add:`, JSON.stringify(simulatedRelationships));
-        return JSON.parse(JSON.stringify(newRelationship)); // Return a deep copy
+        activeDataset.relationships.push(newRelationship);
+        console.log(`[addRelationship Service - Active: ${activeDatasetName}] Successfully added relationship:`, newRelationship);
+        console.log(`[addRelationship Service - Active: ${activeDatasetName}] Relationships count: ${activeDataset.relationships.length}. Next ID: ${activeDataset.nextRelationshipId}`);
+        console.log(`[addRelationship Service - Active: ${activeDatasetName}] Relationships after:`, JSON.stringify(activeDataset.relationships));
+        return JSON.parse(JSON.stringify(newRelationship));
     } catch (error) {
-        console.error(`[addRelationship Service] Error for ${sourceIdStr} -> ${targetIdStr}:`, error);
+        console.error(`[addRelationship Service - Active: ${activeDatasetName}] Error for ${sourceIdStr} -> ${targetIdStr}:`, error);
         if (error instanceof Error) {
             throw new Error(`Failed to add relationship: ${error.message}`);
         }
@@ -329,25 +444,29 @@ export async function addRelationship(sourceEntryId: number | string, targetEntr
 }
 
 /**
- * Asynchronously fetches all relationships originating from a specific source entry ID
- * from the simulated in-memory store.
+ * Asynchronously fetches all relationships originating from a specific source ID in the *active* dataset.
  *
  * @param sourceEntryId The ID of the source entry.
- * @returns A promise that resolves to an array of RelationshipEntry objects found in the current session.
- * @throws {Error} If the operation fails.
+ * @returns A promise resolving to an array of RelationshipEntry objects.
+ * @throws {Error} If the operation fails or no dataset is active.
  */
 export async function getRelationshipsBySourceId(sourceEntryId: number | string): Promise<RelationshipEntry[]> {
+    const activeDataset = getActiveDataset();
+    if (!activeDataset) {
+        console.error(`[getRelationshipsBySourceId Service] No active dataset to fetch from.`);
+        throw new Error('No active dataset selected.');
+    }
     const sourceIdStr = String(sourceEntryId);
-    console.log(`[getRelationshipsBySourceId Service] Called for source ID: ${sourceIdStr}`);
+    console.log(`[getRelationshipsBySourceId Service - Active: ${activeDatasetName}] Called for source ID: ${sourceIdStr}`);
     try {
         await new Promise(resolve => setTimeout(resolve, 150)); // Simulate network delay
-        const relationships = simulatedRelationships.filter(
+        const relationships = activeDataset.relationships.filter(
             rel => String(rel.source_entry_id) === sourceIdStr
         );
-        console.log(`[getRelationshipsBySourceId Service] Found ${relationships.length} relationships for source ID ${sourceIdStr}`);
+        console.log(`[getRelationshipsBySourceId Service - Active: ${activeDatasetName}] Found ${relationships.length} relationships for source ${sourceIdStr}.`);
         return JSON.parse(JSON.stringify(relationships));
     } catch (error) {
-        console.error(`[getRelationshipsBySourceId Service] Error for source ID ${sourceIdStr}:`, error);
+        console.error(`[getRelationshipsBySourceId Service - Active: ${activeDatasetName}] Error for source ID ${sourceIdStr}:`, error);
         if (error instanceof Error) {
             throw new Error(`Failed to fetch relationships for ID ${sourceIdStr}: ${error.message}`);
         }
@@ -355,30 +474,28 @@ export async function getRelationshipsBySourceId(sourceEntryId: number | string)
     }
 }
 
-
 /**
- * Asynchronously fetches all relationships from the simulated in-memory store.
+ * Asynchronously fetches all relationships from the *active* simulated dataset.
  *
- * @returns A promise that resolves to an array of all RelationshipEntry objects.
- * @throws {Error} If the operation fails.
+ * @returns A promise resolving to an array of all RelationshipEntry objects in the active dataset.
+ * @throws {Error} If the operation fails or no dataset is active.
  */
 export async function getAllRelationships(): Promise<RelationshipEntry[]> {
-    console.log('[getAllRelationships Service] Called');
+    const activeDataset = getActiveDataset();
+    if (!activeDataset) {
+        console.error(`[getAllRelationships Service] No active dataset to fetch from.`);
+        throw new Error('No active dataset selected.');
+    }
+    console.log(`[getAllRelationships Service - Active: ${activeDatasetName}] Called`);
     try {
         await new Promise(resolve => setTimeout(resolve, 150)); // Simulate network delay
-        console.log(`[getAllRelationships Service] Returning ${simulatedRelationships.length} relationships.`);
-        return JSON.parse(JSON.stringify(simulatedRelationships));
+        console.log(`[getAllRelationships Service - Active: ${activeDatasetName}] Returning ${activeDataset.relationships.length} relationships.`);
+        return JSON.parse(JSON.stringify(activeDataset.relationships));
     } catch (error) {
-        console.error('[getAllRelationships Service] Error:', error);
+        console.error(`[getAllRelationships Service - Active: ${activeDatasetName}] Error:`, error);
         if (error instanceof Error) {
             throw new Error(`Failed to fetch all relationships: ${error.message}`);
         }
         throw new Error('An unknown error occurred while fetching all relationships.');
     }
 }
-
-
-// NOTE: To fix data persistence issues, replace this entire file's implementation
-// with code that interacts with a real, persistent database (e.g., PostgreSQL, Firestore).
-// The in-memory arrays (`simulatedDatabase`, `simulatedRelationships`, `nextId`, `nextRelationshipId`)
-// would be removed.
