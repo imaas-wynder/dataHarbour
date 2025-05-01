@@ -499,3 +499,4 @@ export async function getAllRelationships(): Promise<RelationshipEntry[]> {
         throw new Error('An unknown error occurred while fetching all relationships.');
     }
 }
+
