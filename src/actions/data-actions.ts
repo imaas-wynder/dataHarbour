@@ -1,8 +1,9 @@
 
 // src/actions/data-actions.ts
 'use server';
+import pool from '@/services/db/client';
 
-import {
+/*import {
     addData,
     updateDataById,
     getDataById,
@@ -16,7 +17,7 @@ import {
     getActiveDatasetName,    // Import new service function
     getAllDatasetNames,      // Import new service function
     // Removed replaceDatabase import as it's superseded by createOrReplaceDataset
-} from '@/services/database';
+} from '@/services/database';*/
 import type { DataEntry, RelationshipEntry } from '@/services/types'; // Import types
 import { revalidatePath } from 'next/cache';
 import { cleanDataFlow } from '@/ai/flows/clean-data-flow';
@@ -37,7 +38,7 @@ export async function setActiveDatasetAction(name: string): Promise<ActionResult
     console.log(`Server Action: Received request to set active dataset to: ${name}`);
     try {
         // setActiveDataset now just updates the in-memory variable, no DB check needed here
-        const success = await setActiveDataset(name);
+        const success = await setActiveDatasetAction(name);
         if (success) {
             console.log(`Server Action: Active dataset set to '${name}'.`);
             // Revalidate the main page to reflect changes related to the active dataset
@@ -61,7 +62,7 @@ export async function setActiveDatasetAction(name: string): Promise<ActionResult
 export async function getActiveDatasetNameAction(): Promise<ActionResult> {
     console.log("Server Action: Received request to get active dataset name.");
     try {
-        const name = await getActiveDatasetName();
+        const name = await getActiveDatasetNameAction();
         console.log(`Server Action: Active dataset name is '${name}'.`);
         return { success: true, data: name };
     } catch (error) {
@@ -77,7 +78,7 @@ export async function getActiveDatasetNameAction(): Promise<ActionResult> {
 export async function getAllDatasetNamesAction(): Promise<ActionResult> {
     console.log("Server Action: Received request to get all dataset names.");
     try {
-        const names = await getAllDatasetNames();
+        const names = await getAllDatasetNamesAction();
         console.log(`Server Action: Found dataset names: [${names.join(', ')}]`);
         return { success: true, data: names };
     } catch (error) {
@@ -96,7 +97,7 @@ export async function createNewDatasetAction(datasetName: string, newData: DataE
   console.log(`Server Action: Received request to create/replace dataset '${datasetName}' with ${newData.length} entries.`);
   try {
     // Pass data directly, createOrReplaceDataset handles ID assignment/conversion internally
-    const success = await createOrReplaceDataset(datasetName, newData);
+    const success = await createNewDatasetAction(datasetName, newData);
 
     if (success) {
       console.log(`Server Action: Dataset '${datasetName}' created/replaced and set as active.`);
@@ -124,13 +125,13 @@ export async function createNewDatasetAction(datasetName: string, newData: DataE
  * Expects DataEntry with optional string IDs.
  */
 export async function uploadDataAction(data: DataEntry | DataEntry[]): Promise<ActionResult> {
-  const activeName = await getActiveDatasetName();
+  const activeName = await getActiveDatasetNameAction();
   if (!activeName) {
     return { success: false, error: "No active dataset selected." };
   }
   console.log(`Server Action [Active: ${activeName}]: Received data for upload/update:`, JSON.stringify(data).substring(0, 100) + '...');
   try {
-    // Pass data directly, addData handles ID assignment/conversion and upsert logic
+    // Pass data directly, addData handles ID assignment/conversion and upsert logic\
     const success = await addData(data);
 
     if (success) {
@@ -155,13 +156,13 @@ export async function uploadDataAction(data: DataEntry | DataEntry[]): Promise<A
  * Cleans a specific data entry using an AI flow. Requires the entry ID (string).
  */
 export async function cleanDataAction(entryId: string): Promise<ActionResult> {
-  const activeName = await getActiveDatasetName();
+  const activeName = await getActiveDatasetNameAction();
    if (!activeName) {
     return { success: false, error: "No active dataset selected." };
   }
   console.log(`Server Action [Active: ${activeName}]: Received request to clean data for ID: ${entryId}`);
   try {
-    // Fetch data using string ID
+     // Fetch data using string ID
     const currentData = await getDataById(entryId);
     if (!currentData) {
       return { success: false, error: `Data entry with ID ${entryId} not found in active dataset '${activeName}'.` };
@@ -190,7 +191,7 @@ export async function cleanDataAction(entryId: string): Promise<ActionResult> {
  * @param cleanedData The data object (should NOT contain the 'id' field).
  */
 export async function updateDataAction(entryId: string, cleanedData: Omit<DataEntry, 'id'>): Promise<ActionResult> {
-    const activeName = await getActiveDatasetName();
+    const activeName = await getActiveDatasetNameAction();
      if (!activeName) {
         return { success: false, error: "No active dataset selected." };
      }
@@ -222,7 +223,7 @@ export async function updateDataAction(entryId: string, cleanedData: Omit<DataEn
  * Fetches multiple data entries by their string IDs from the active dataset.
  */
 export async function getDataByIdsAction(ids: string[]): Promise<ActionResult> {
-    const activeName = await getActiveDatasetName();
+    const activeName = await getActiveDatasetNameAction();
     if (!activeName) {
        return { success: false, error: "No active dataset selected." };
     }
@@ -246,7 +247,7 @@ export async function getDataByIdsAction(ids: string[]): Promise<ActionResult> {
  * Fetches all data entries from the active dataset.
  */
 export async function getAllDataAction(): Promise<ActionResult> {
-    const activeName = await getActiveDatasetName();
+    const activeName = await getActiveDatasetNameAction();
      if (!activeName) {
         return { success: false, error: "No active dataset selected." };
      }
@@ -272,7 +273,7 @@ export async function getAllDataAction(): Promise<ActionResult> {
  * Adds a relationship between two entries identified by their string IDs.
  */
 export async function addRelationshipAction(sourceId: string, targetId: string): Promise<ActionResult> {
-    const activeName = await getActiveDatasetName();
+    const activeName = await getActiveDatasetNameAction();
      if (!activeName) {
         return { success: false, error: "No active dataset selected." };
      }
@@ -318,7 +319,7 @@ export async function addRelationshipAction(sourceId: string, targetId: string):
  * Fetches relationships originating from a specific source ID (string) in the active dataset.
  */
 export async function getRelationshipsAction(sourceId: string): Promise<ActionResult> {
-    const activeName = await getActiveDatasetName();
+    const activeName = await getActiveDatasetNameAction();
      if (!activeName) {
         return { success: false, error: "No active dataset selected." };
      }
@@ -342,7 +343,7 @@ export async function getRelationshipsAction(sourceId: string): Promise<ActionRe
  * Fetches all relationships from the active dataset.
  */
 export async function getAllRelationshipsAction(): Promise<ActionResult> {
-    const activeName = await getActiveDatasetName();
+    const activeName = await getActiveDatasetNameAction();
      if (!activeName) {
         return { success: false, error: "No active dataset selected." };
      }

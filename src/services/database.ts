@@ -1,6 +1,8 @@
+//Postgresql basic imports
 
+import client from '@/services/db/client';
 // src/services/database.ts
-import { Pool, type QueryResult } from 'pg';
+//import { Pool, type QueryResult } from 'pg';
 import type { DataEntry, RelationshipEntry } from './types';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -11,6 +13,9 @@ import { v4 as uuidv4 } from 'uuid';
 // Ensure your environment variables are set correctly in .env
 // Check the README.md for troubleshooting database connection errors.
 // ========================================================================
+//Basic connection
+//const connectionString = `postgres://Dataharbour:d&h$_628@localhost:5432/dataharbor_db`;
+const client (connectionString);
 
 
 // --- Connection Pool ---
