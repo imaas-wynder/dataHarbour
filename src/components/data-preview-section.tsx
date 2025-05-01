@@ -26,8 +26,8 @@ import { setActiveDatasetAction } from "@/actions/data-actions";
 
 
 interface DataPreviewSectionProps {
-  initialData: DataEntry[];
-  initialRelationships: RelationshipEntry[];
+  initialData: DataEntry[]; // Expects DataEntry with string id
+  initialRelationships: RelationshipEntry[]; // Expects RelationshipEntry with string ids
   activeDatasetName: string | null; // Name of the currently active dataset
   allDatasetNames: string[];       // List of all available dataset names
   error: string | null;
@@ -47,7 +47,7 @@ export function DataPreviewSection({
 
   const [error, setError] = useState<string | null>(initialError);
   const [filterError, setFilterError] = useState<string | null>(null);
-  const [filterSourceId, setFilterSourceId] = useState<string>('');
+  const [filterSourceId, setFilterSourceId] = useState<string>(''); // Filter ID is a string
   const [displayedData, setDisplayedData] = useState<DataEntry[]>(initialData);
   const [currentActiveName, setCurrentActiveName] = useState<string | null>(initialActiveName);
 
@@ -141,7 +141,8 @@ export function DataPreviewSection({
 
 
   const handleApplyFilter = () => {
-    if (!filterSourceId.trim()) {
+    const sourceIdStr = filterSourceId.trim();
+    if (!sourceIdStr) {
       setFilterError("Please enter a Source Entry ID to filter by.");
       toast({ variant: "destructive", title: "Missing Input", description: "Source Entry ID cannot be empty." });
       return;
@@ -150,16 +151,16 @@ export function DataPreviewSection({
     setFilterError(null);
     startFilteringTransition(async () => {
       try {
-        const sourceIdStr = filterSourceId.trim();
         // Use relationships from props (which should be for the active dataset)
+        // Filter relationships based on the string source ID
         const targetIds = new Set(
             initialRelationships
-            .filter(rel => String(rel.source_entry_id) === sourceIdStr)
-            .map(rel => String(rel.target_entry_id))
+            .filter(rel => rel.source_entry_id === sourceIdStr) // Compare strings
+            .map(rel => rel.target_entry_id) // Target IDs are already strings
         );
 
-        // Filter based on the initialData for the current active dataset
-        const sourceExists = initialData.some(entry => String(entry.id) === sourceIdStr);
+        // Check if the source entry exists in the initialData using string comparison
+        const sourceExists = initialData.some(entry => entry.id === sourceIdStr);
 
         if (!sourceExists) {
             setFilterError(`Source entry ID ${sourceIdStr} not found in dataset '${currentActiveName || 'N/A'}.`);
@@ -173,8 +174,8 @@ export function DataPreviewSection({
         }
 
         if (targetIds.size > 0) {
-             // Filter initialData based on targetIds
-             const filteredResults = initialData.filter(entry => targetIds.has(String(entry.id)));
+             // Filter initialData based on targetIds (string comparison)
+             const filteredResults = initialData.filter(entry => targetIds.has(entry.id));
              setDisplayedData(filteredResults);
              toast({
                title: "Filter Applied",

@@ -32,7 +32,7 @@ import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'; // Added Sc
 
 interface DataDetailViewProps {
   initialData: DataEntry;
-  entryId: string | number;
+  entryId: string; // Ensure entryId is always string
 }
 
 export function DataDetailView({ initialData, entryId }: DataDetailViewProps) {
@@ -64,11 +64,12 @@ export function DataDetailView({ initialData, entryId }: DataDetailViewProps) {
      setRelationshipError(null);
      startLoadingRelationshipsTransition(async () => {
        try {
-         // getRelationshipsAction operates on the active dataset
+         // Pass string entryId to action
          const result = await getRelationshipsAction(entryId);
          if (result.success && Array.isArray(result.data)) {
            setRelationships(result.data);
-           const targetIds = result.data.map((rel: RelationshipEntry) => rel.target_entry_id);
+           // Ensure target IDs are strings for getDataByIdsAction
+           const targetIds = result.data.map((rel: RelationshipEntry) => String(rel.target_entry_id));
            if (targetIds.length > 0) {
                fetchRelatedData(targetIds);
            } else {
@@ -89,7 +90,7 @@ export function DataDetailView({ initialData, entryId }: DataDetailViewProps) {
          setRelatedHeaders([]);
        }
      });
-   }, [entryId]); // Depend on entryId
+   }, [entryId]); // Depend on string entryId
 
    // Initial fetch on component mount
    useEffect(() => {
@@ -98,10 +99,11 @@ export function DataDetailView({ initialData, entryId }: DataDetailViewProps) {
    // --- End Fetch Relationships ---
 
    // --- Fetch Related Data ---
-   const fetchRelatedData = (targetIds: (string | number)[]) => {
+   // Expects an array of string IDs
+   const fetchRelatedData = (targetIds: string[]) => {
        startLoadingRelatedDataTransition(async () => {
             try {
-                // getDataByIdsAction operates on the active dataset
+                // Pass string IDs to action
                 const result = await getDataByIdsAction(targetIds);
                 if (result.success && Array.isArray(result.data)) {
                     setRelatedData(result.data);
@@ -115,10 +117,11 @@ export function DataDetailView({ initialData, entryId }: DataDetailViewProps) {
                     if (headers.includes('id')) {
                         headers = ['id', ...headers.filter(h => h !== 'id')];
                     }
-                    const simpleHeaders = headers.filter(header => {
+                    // Simplify headers (optional, based on previous logic)
+                     const simpleHeaders = headers.filter(header => {
                         if (result.data.length > 0 && result.data[0] && typeof result.data[0] === 'object') {
-                            const firstValue = result.data[0][header];
-                            return typeof firstValue !== 'object' || firstValue === null;
+                             const firstValue = result.data[0][header];
+                             return typeof firstValue !== 'object' || firstValue === null;
                         }
                         return true;
                     });
@@ -146,7 +149,7 @@ export function DataDetailView({ initialData, entryId }: DataDetailViewProps) {
     setCleanedDataSuggestion(null);
     startCleaningTransition(async () => {
       try {
-        // cleanDataAction operates on the active dataset implicitly via getDataById
+        // Pass string entryId to action
         const result = await cleanDataAction(entryId);
         if (result.success && result.data) {
           setCleanedDataSuggestion(result.data as DataEntry);
@@ -181,10 +184,11 @@ export function DataDetailView({ initialData, entryId }: DataDetailViewProps) {
       setEditError(null);
       startSavingTransition(async () => {
         try {
-            // updateDataAction operates on the active dataset
+            // Pass string entryId to action
             const result = await updateDataAction(entryId, cleanedDataSuggestion);
              if (result.success) {
-                setCurrentData(cleanedDataSuggestion);
+                // Update local state - ensure ID remains a string
+                setCurrentData({...cleanedDataSuggestion, id: entryId });
                 setCleanedDataSuggestion(null);
                 toast({
                     title: 'Success',
@@ -244,13 +248,17 @@ export function DataDetailView({ initialData, entryId }: DataDetailViewProps) {
   const handleSaveChanges = () => {
     setError(null);
     setEditError(null);
-    let parsedData: DataEntry;
+    let parsedData: Omit<DataEntry, 'id'>; // Expect data without id from textarea
 
     try {
-        parsedData = JSON.parse(editedJsonString);
-        if (typeof parsedData !== 'object' || parsedData === null) {
-            throw new Error("Invalid data format. Must be a JSON object.");
+        const rawParsed = JSON.parse(editedJsonString);
+        if (typeof rawParsed !== 'object' || rawParsed === null || Array.isArray(rawParsed)) {
+            throw new Error("Invalid data format. Must be a single JSON object.");
         }
+        // Ensure the 'id' field is not present in the object to be saved by updateDataAction
+        const { id, ...rest } = rawParsed;
+        parsedData = rest;
+
     } catch (e) {
         const message = e instanceof Error ? e.message : "Invalid JSON format.";
         setEditError(message);
@@ -264,11 +272,11 @@ export function DataDetailView({ initialData, entryId }: DataDetailViewProps) {
 
     startSavingTransition(async () => {
         try {
-            const dataToSave = { ...parsedData };
-            // updateDataAction operates on the active dataset
-            const result = await updateDataAction(entryId, dataToSave);
+            // Pass string entryId and data without id to action
+            const result = await updateDataAction(entryId, parsedData);
             if (result.success) {
-                setCurrentData({ ...dataToSave, id: currentData.id });
+                // Update local state with the saved data, preserving the string ID
+                setCurrentData({ ...parsedData, id: entryId });
                 setIsEditing(false);
                 toast({
                     title: 'Success',
@@ -299,7 +307,8 @@ export function DataDetailView({ initialData, entryId }: DataDetailViewProps) {
 
    // --- Relationship Handlers ---
    const handleAddRelationship = () => {
-        if (!targetEntryId.trim()) {
+        const trimmedTargetId = targetEntryId.trim();
+        if (!trimmedTargetId) {
             setRelationshipError('Target Entry ID cannot be empty.');
             toast({ variant: 'destructive', title: 'Missing Input', description: 'Please enter a Target Entry ID.' });
             return;
@@ -307,8 +316,8 @@ export function DataDetailView({ initialData, entryId }: DataDetailViewProps) {
         setRelationshipError(null);
         startAddingRelationshipTransition(async () => {
              try {
-                 // addRelationshipAction operates on the active dataset
-                 const result = await addRelationshipAction(entryId, targetEntryId.trim());
+                 // Pass string IDs to action
+                 const result = await addRelationshipAction(entryId, trimmedTargetId);
                  if (result.success && result.data) {
                      setTargetEntryId(''); // Clear input on success
                      toast({
@@ -337,6 +346,7 @@ export function DataDetailView({ initialData, entryId }: DataDetailViewProps) {
         });
    };
 
+   // Relationship deletion remains unimplemented
    const handleDeleteRelationship = (relationshipId: number | string) => {
         console.warn(`Delete relationship functionality not implemented yet (ID: ${relationshipId})`);
          toast({
@@ -376,6 +386,8 @@ export function DataDetailView({ initialData, entryId }: DataDetailViewProps) {
 
   const isActionPending = isCleaning || isSaving || isLoadingRelationships || isLoadingRelatedData || isAddingRelationship;
 
+  // Prepare current data for display, ensuring id is included
+  const displayData = useMemo(() => ({ id: entryId, ...currentData }), [currentData, entryId]);
 
   return (
     <div className="space-y-6">
@@ -391,7 +403,7 @@ export function DataDetailView({ initialData, entryId }: DataDetailViewProps) {
             <CardHeader>
                 <CardTitle>Current Data</CardTitle>
                 <CardDescription>
-                    {isEditing ? "Edit the JSON data below." : "The data currently stored in the database."}
+                    {isEditing ? "Edit the JSON data below (ID field will be ignored on save)." : "The data currently stored in the database."}
                 </CardDescription>
             </CardHeader>
             <CardContent>
@@ -400,7 +412,8 @@ export function DataDetailView({ initialData, entryId }: DataDetailViewProps) {
                         <Label htmlFor="edit-data-textarea">Edit Data (JSON)</Label>
                         <Textarea
                             id="edit-data-textarea"
-                            value={editedJsonString}
+                            // Use displayData which includes the ID for editing context, but ID is removed before saving
+                            value={editedJsonString || JSON.stringify(displayData, null, 2)}
                             onChange={handleEditChange}
                             className="min-h-[250px] font-mono text-sm"
                             disabled={isSaving}
@@ -413,7 +426,8 @@ export function DataDetailView({ initialData, entryId }: DataDetailViewProps) {
                     </div>
                  ) : (
                     <pre className="p-4 bg-muted rounded-md overflow-auto text-sm">
-                      {JSON.stringify(currentData, null, 2)}
+                      {/* Display data including the ID */}
+                      {JSON.stringify(displayData, null, 2)}
                     </pre>
                  )}
             </CardContent>
@@ -549,6 +563,7 @@ export function DataDetailView({ initialData, entryId }: DataDetailViewProps) {
                         ) : (
                             relatedHeaders.map((header) => (
                                 <TableHead key={header} className="whitespace-nowrap">
+                                    {/* Capitalize header */}
                                     {header.charAt(0).toUpperCase() + header.slice(1)}
                                 </TableHead>
                             ))
@@ -565,6 +580,7 @@ export function DataDetailView({ initialData, entryId }: DataDetailViewProps) {
                             </TableCell>
                         </TableRow>
                     ) : relatedData.length > 0 ? (
+                      // Ensure relatedData has string IDs before mapping
                       relatedData.map((entry) => (
                         <TableRow key={entry.id}>
                            {relatedHeaders.map((header) => (
@@ -576,6 +592,7 @@ export function DataDetailView({ initialData, entryId }: DataDetailViewProps) {
                             ))}
                            <TableCell className="text-right">
                                <Button variant="ghost" size="sm" asChild>
+                                  {/* Link uses string ID */}
                                   <Link href={`/data/${entry.id}`} target="_blank" rel="noopener noreferrer">
                                     View
                                   </Link>

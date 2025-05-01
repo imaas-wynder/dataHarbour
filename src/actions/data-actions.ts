@@ -36,6 +36,7 @@ interface ActionResult {
 export async function setActiveDatasetAction(name: string): Promise<ActionResult> {
     console.log(`Server Action: Received request to set active dataset to: ${name}`);
     try {
+        // setActiveDataset now just updates the in-memory variable, no DB check needed here
         const success = await setActiveDataset(name);
         if (success) {
             console.log(`Server Action: Active dataset set to '${name}'.`);
@@ -43,8 +44,9 @@ export async function setActiveDatasetAction(name: string): Promise<ActionResult
             revalidatePath('/');
             return { success: true, message: `Dataset '${name}' is now active.` };
         } else {
-            console.warn(`Server Action: Failed to set active dataset. Dataset '${name}' might not exist.`);
-            return { success: false, error: `Dataset '${name}' not found.` };
+            // This case should technically not happen with the current setActiveDataset logic
+            console.warn(`Server Action: Failed to set active dataset (unexpected).`);
+            return { success: false, error: `Failed to set active dataset.` };
         }
     } catch (error) {
         console.error(`Server Action: Error setting active dataset to '${name}':`, error);
@@ -88,11 +90,12 @@ export async function getAllDatasetNamesAction(): Promise<ActionResult> {
 
 /**
  * Creates a new dataset with the provided data, replacing if the name already exists.
- * Sets the new dataset as active.
+ * Sets the new dataset as active. Accepts DataEntry with optional string IDs.
  */
 export async function createNewDatasetAction(datasetName: string, newData: DataEntry[]): Promise<ActionResult> {
   console.log(`Server Action: Received request to create/replace dataset '${datasetName}' with ${newData.length} entries.`);
   try {
+    // Pass data directly, createOrReplaceDataset handles ID assignment/conversion internally
     const success = await createOrReplaceDataset(datasetName, newData);
 
     if (success) {
@@ -116,29 +119,31 @@ export async function createNewDatasetAction(datasetName: string, newData: DataE
 
 // --- Data Operations Actions (operate on the active dataset) ---
 
+/**
+ * Uploads/updates data in the active dataset. Handles both single entries and arrays.
+ * Expects DataEntry with optional string IDs.
+ */
 export async function uploadDataAction(data: DataEntry | DataEntry[]): Promise<ActionResult> {
   const activeName = await getActiveDatasetName();
-  console.log(`Server Action [Active: ${activeName}]: Received data for upload (Add New):`, data);
+  if (!activeName) {
+    return { success: false, error: "No active dataset selected." };
+  }
+  console.log(`Server Action [Active: ${activeName}]: Received data for upload/update:`, JSON.stringify(data).substring(0, 100) + '...');
   try {
-    let success = true;
-    if (Array.isArray(data)) {
-      const results = await Promise.all(data.map(entry => addData(entry))); // addData now uses active dataset
-      success = results.every(result => result);
-    } else {
-      success = await addData(data); // addData now uses active dataset
-    }
+    // Pass data directly, addData handles ID assignment/conversion and upsert logic
+    const success = await addData(data);
 
     if (success) {
-      console.log(`Server Action [Active: ${activeName}]: Data added successfully.`);
+      console.log(`Server Action [Active: ${activeName}]: Data added/updated successfully.`);
       revalidatePath('/');
-      return { success: true, message: 'Data added to the current set successfully.' };
+      return { success: true, message: 'Data added/updated in the current set successfully.' };
     } else {
-      console.error(`Server Action [Active: ${activeName}]: One or more entries failed to upload.`);
-      return { success: false, error: 'Failed to add one or more data entries.' };
+      console.error(`Server Action [Active: ${activeName}]: Failed to add or update data.`);
+      return { success: false, error: 'Failed to add or update data entries.' };
     }
   } catch (error) {
-    console.error(`Server Action [Active: ${activeName}]: Error uploading data:`, error);
-    let errorMessage = 'An unexpected error occurred during data upload.';
+    console.error(`Server Action [Active: ${activeName}]: Error uploading/updating data:`, error);
+    let errorMessage = 'An unexpected error occurred during data upload/update.';
     if (error instanceof Error) {
         errorMessage = error.message;
     }
@@ -146,17 +151,27 @@ export async function uploadDataAction(data: DataEntry | DataEntry[]): Promise<A
   }
 }
 
-export async function cleanDataAction(entryId: number | string): Promise<ActionResult> {
+/**
+ * Cleans a specific data entry using an AI flow. Requires the entry ID (string).
+ */
+export async function cleanDataAction(entryId: string): Promise<ActionResult> {
   const activeName = await getActiveDatasetName();
+   if (!activeName) {
+    return { success: false, error: "No active dataset selected." };
+  }
   console.log(`Server Action [Active: ${activeName}]: Received request to clean data for ID: ${entryId}`);
   try {
-    const currentData = await getDataById(entryId); // getDataById now uses active dataset
+    // Fetch data using string ID
+    const currentData = await getDataById(entryId);
     if (!currentData) {
       return { success: false, error: `Data entry with ID ${entryId} not found in active dataset '${activeName}'.` };
     }
 
+    // Pass the fetched data (which includes the string 'id') to the flow
     const cleanedData = await cleanDataFlow(currentData);
     console.log(`Server Action [Active: ${activeName}]: Genkit flow returned cleaned data:`, cleanedData);
+    // The cleaned data returned by the flow might or might not include the 'id'.
+    // The updateDataAction will handle merging correctly.
     return { success: true, message: 'Data cleaning suggestions generated.', data: cleanedData };
 
   } catch (error) {
@@ -169,12 +184,20 @@ export async function cleanDataAction(entryId: number | string): Promise<ActionR
   }
 }
 
-export async function updateDataAction(entryId: number | string, cleanedData: DataEntry): Promise<ActionResult> {
+/**
+ * Updates a specific data entry in the active dataset.
+ * @param entryId The string ID of the entry to update.
+ * @param cleanedData The data object (should NOT contain the 'id' field).
+ */
+export async function updateDataAction(entryId: string, cleanedData: Omit<DataEntry, 'id'>): Promise<ActionResult> {
     const activeName = await getActiveDatasetName();
+     if (!activeName) {
+        return { success: false, error: "No active dataset selected." };
+     }
     console.log(`Server Action [Active: ${activeName}]: Received request to update/amend data for ID: ${entryId}`);
     try {
-        const { id, ...dataToUpdate } = cleanedData;
-        const success = await updateDataById(entryId, dataToUpdate); // updateDataById now uses active dataset
+        // Pass string ID and data without ID to the service function
+        const success = await updateDataById(entryId, cleanedData);
 
         if (success) {
             console.log(`Server Action [Active: ${activeName}]: Data for ID ${entryId} updated successfully.`);
@@ -196,13 +219,17 @@ export async function updateDataAction(entryId: number | string, cleanedData: Da
 }
 
 /**
- * Fetches multiple data entries by their IDs from the active dataset.
+ * Fetches multiple data entries by their string IDs from the active dataset.
  */
-export async function getDataByIdsAction(ids: (number | string)[]): Promise<ActionResult> {
+export async function getDataByIdsAction(ids: string[]): Promise<ActionResult> {
     const activeName = await getActiveDatasetName();
+    if (!activeName) {
+       return { success: false, error: "No active dataset selected." };
+    }
     console.log(`Server Action [Active: ${activeName}]: Received request to get data for IDs: [${ids.join(', ')}]`);
     try {
-        const data = await getDataByIds(ids); // getDataByIds now uses active dataset
+        // Pass string IDs to service
+        const data = await getDataByIds(ids);
         console.log(`Server Action [Active: ${activeName}]: Found ${data.length} entries for the requested IDs.`);
         return { success: true, data: data };
     } catch (error) {
@@ -220,9 +247,12 @@ export async function getDataByIdsAction(ids: (number | string)[]): Promise<Acti
  */
 export async function getAllDataAction(): Promise<ActionResult> {
     const activeName = await getActiveDatasetName();
+     if (!activeName) {
+        return { success: false, error: "No active dataset selected." };
+     }
     console.log(`Server Action [Active: ${activeName}]: Received request to get all data.`);
      try {
-         const data = await getAllData(); // getAllData now uses active dataset
+         const data = await getAllData(); // Fetches from active dataset
          console.log(`Server Action [Active: ${activeName}]: Found ${data.length} total data entries.`);
          return { success: true, data: data };
      } catch (error) {
@@ -238,38 +268,44 @@ export async function getAllDataAction(): Promise<ActionResult> {
 
 // --- Relationship Actions (operate on the active dataset) ---
 
-export async function addRelationshipAction(sourceId: number | string, targetId: number | string): Promise<ActionResult> {
+/**
+ * Adds a relationship between two entries identified by their string IDs.
+ */
+export async function addRelationshipAction(sourceId: string, targetId: string): Promise<ActionResult> {
     const activeName = await getActiveDatasetName();
-    const sourceIdStr = String(sourceId);
-    const targetIdStr = String(targetId);
-    console.log(`Server Action [Active: ${activeName}]: Received request to add relationship: ${sourceIdStr} -> ${targetIdStr}`);
+     if (!activeName) {
+        return { success: false, error: "No active dataset selected." };
+     }
+    console.log(`Server Action [Active: ${activeName}]: Received request to add relationship: ${sourceId} -> ${targetId}`);
     try {
-        if (sourceIdStr === targetIdStr) {
-             console.warn(`Server Action [Active: ${activeName}]: Attempted to add self-referencing relationship for ID ${sourceIdStr}.`);
+        if (sourceId === targetId) {
+             console.warn(`Server Action [Active: ${activeName}]: Attempted to add self-referencing relationship for ID ${sourceId}.`);
              return { success: false, error: 'Cannot create a relationship with the same entry.' };
         }
 
-        const newRelationship = await addRelationship(sourceIdStr, targetIdStr); // addRelationship now uses active dataset
+        // Pass string IDs to service
+        const newRelationship = await addRelationship(sourceId, targetId);
 
         if (newRelationship) {
-            console.log(`Server Action [Active: ${activeName}]: Relationship added successfully:`, newRelationship);
-            revalidatePath(`/data/${sourceIdStr}`);
-            revalidatePath('/');
+            console.log(`Server Action [Active: ${activeName}]: Relationship added/found successfully:`, newRelationship);
+            revalidatePath(`/data/${sourceId}`); // Revalidate source page
+            revalidatePath(`/data/${targetId}`); // Revalidate target page (if visited)
+            revalidatePath('/'); // Revalidate overview page
             return { success: true, message: 'Relationship added successfully.', data: newRelationship };
         } else {
-             console.warn(`Server Action [Active: ${activeName}]: addRelationship service returned null for ${sourceIdStr} -> ${targetIdStr}. Checking entry existence...`);
-             // Check existence within the *active* dataset
-             const sourceExists = !!await getDataById(sourceIdStr);
-             const targetExists = !!await getDataById(targetIdStr);
-             let errorMsg = `Failed to add relationship in dataset '${activeName}'. Possible duplicate or other issue.`;
-             if (!sourceExists) errorMsg = `Source entry ID ${sourceIdStr} not found in dataset '${activeName}'.`;
-             else if (!targetExists) errorMsg = `Target entry ID ${targetIdStr} not found in dataset '${activeName}'.`;
-
-             console.error(`Server Action [Active: ${activeName}]: Failed add relationship ${sourceIdStr} -> ${targetIdStr}. ${errorMsg}`);
-             return { success: false, error: errorMsg };
+             // addRelationship service now returns null if source/target don't exist
+             console.error(`Server Action [Active: ${activeName}]: Failed add relationship ${sourceId} -> ${targetId}. Source or Target ID likely missing in dataset '${activeName}'.`);
+             // Check existence for better error message (optional, requires extra DB calls)
+             // const sourceExists = !!await getDataById(sourceId);
+             // const targetExists = !!await getDataById(targetId);
+             // let errorMsg = `Failed to add relationship in dataset '${activeName}'.`;
+             // if (!sourceExists) errorMsg = `Source entry ID ${sourceId} not found in dataset '${activeName}'.`;
+             // else if (!targetExists) errorMsg = `Target entry ID ${targetId} not found in dataset '${activeName}'.`;
+             // else errorMsg = `Failed to add relationship in dataset '${activeName}'. Possible database issue.`;
+             return { success: false, error: `Failed to add relationship. Ensure both source (${sourceId}) and target (${targetId}) IDs exist in dataset '${activeName}'.` };
         }
     } catch (error) {
-        console.error(`Server Action [Active: ${activeName}]: Error adding relationship ${sourceIdStr} -> ${targetIdStr}:`, error);
+        console.error(`Server Action [Active: ${activeName}]: Error adding relationship ${sourceId} -> ${targetId}:`, error);
         let errorMessage = 'An unexpected error occurred while adding the relationship.';
         if (error instanceof Error) {
             errorMessage = error.message;
@@ -279,13 +315,17 @@ export async function addRelationshipAction(sourceId: number | string, targetId:
 }
 
 /**
- * Fetches relationships originating from a specific source ID in the active dataset.
+ * Fetches relationships originating from a specific source ID (string) in the active dataset.
  */
-export async function getRelationshipsAction(sourceId: number | string): Promise<ActionResult> {
+export async function getRelationshipsAction(sourceId: string): Promise<ActionResult> {
     const activeName = await getActiveDatasetName();
+     if (!activeName) {
+        return { success: false, error: "No active dataset selected." };
+     }
     console.log(`Server Action [Active: ${activeName}]: Received request to get relationships for source ID: ${sourceId}`);
     try {
-        const relationships = await getRelationshipsBySourceId(sourceId); // getRelationshipsBySourceId now uses active dataset
+        // Pass string ID to service
+        const relationships = await getRelationshipsBySourceId(sourceId);
         console.log(`Server Action [Active: ${activeName}]: Found ${relationships.length} relationships for ${sourceId}.`);
         return { success: true, data: relationships };
     } catch (error) {
@@ -303,9 +343,12 @@ export async function getRelationshipsAction(sourceId: number | string): Promise
  */
 export async function getAllRelationshipsAction(): Promise<ActionResult> {
     const activeName = await getActiveDatasetName();
+     if (!activeName) {
+        return { success: false, error: "No active dataset selected." };
+     }
     console.log(`Server Action [Active: ${activeName}]: Received request to get all relationships.`);
     try {
-        const relationships = await getAllRelationships(); // getAllRelationships now uses active dataset
+        const relationships = await getAllRelationships(); // Fetches from active dataset
         console.log(`Server Action [Active: ${activeName}]: Found ${relationships.length} total relationships.`);
         return { success: true, data: relationships };
     } catch (error) {

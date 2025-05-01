@@ -1,6 +1,6 @@
 
 import { notFound } from 'next/navigation';
-import { getDataById } from '@/services/database';
+import { getDataById, getActiveDatasetName } from '@/services/database'; // Import getActiveDatasetName
 import { DataDetailView } from '@/components/data-detail-view';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import Link from 'next/link';
@@ -10,43 +10,45 @@ import type { DataEntry } from '@/services/types'; // Updated import path
 
 interface DataDetailPageProps {
   params: {
-    id: string;
+    id: string; // ID from URL is always a string
   };
 }
 
 export const dynamic = 'force-dynamic'; // Ensure data is fetched on each request
 
 export default async function DataDetailPage({ params }: DataDetailPageProps) {
-  const { id } = params;
-  // Fetch data using the active dataset implicitly handled by getDataById
+  const { id } = params; // id is a string here
   let dataEntry: DataEntry | null = null;
   let error: string | null = null;
   let activeDatasetName: string | null = null; // To display the dataset name
 
   try {
     // Fetch the active dataset name first for context
-    activeDatasetName = await require('@/services/database').getActiveDatasetName();
+    activeDatasetName = await getActiveDatasetName(); // Fetch using the service function
 
-    console.log(`[DataDetailPage - Active: ${activeDatasetName}] Rendering page for ID: ${id}`);
-    dataEntry = await getDataById(id); // Fetches from the active dataset
+    console.log(`[DataDetailPage - Active: ${activeDatasetName || 'N/A'}] Rendering page for ID: ${id}`);
+    // Pass the string ID directly to getDataById
+    dataEntry = await getDataById(id); // Fetches from the active dataset using string ID
 
     if (dataEntry) {
-        console.log(`[DataDetailPage - Active: ${activeDatasetName}] Successfully fetched data for ID: ${id}.`);
+        console.log(`[DataDetailPage - Active: ${activeDatasetName || 'N/A'}] Successfully fetched data for ID: ${id}.`);
     } else {
-        console.warn(`[DataDetailPage - Active: ${activeDatasetName}] getDataById returned null for ID: ${id}. Entry not found in this dataset.`);
+        console.warn(`[DataDetailPage - Active: ${activeDatasetName || 'N/A'}] getDataById returned null for ID: ${id}. Entry not found in this dataset.`);
     }
 
   } catch (e) {
-    console.error(`[DataDetailPage - Active: ${activeDatasetName}] Failed to fetch data for ID ${id}:`, e);
-    error = `Failed to load data for ID ${id} from dataset '${activeDatasetName || 'N/A'}'.`;
+    const datasetCtx = activeDatasetName || 'N/A'; // Use fetched name or N/A
+    console.error(`[DataDetailPage - Active: ${datasetCtx}] Failed to fetch data for ID ${id}:`, e);
+    error = `Failed to load data for ID ${id} from dataset '${datasetCtx}'.`;
     if (e instanceof Error) {
         error = `${error} Details: ${e.message}`;
     }
+    // No need to re-fetch names on error, use the one already fetched or N/A
   }
 
   // Trigger 404 if no error occurred BUT dataEntry is still null
   if (!error && !dataEntry) {
-     console.log(`[DataDetailPage - Active: ${activeDatasetName}] No data found for ID ${id}. Triggering notFound().`);
+     console.log(`[DataDetailPage - Active: ${activeDatasetName || 'N/A'}] No data found for ID ${id}. Triggering notFound().`);
     notFound();
   }
 
@@ -68,7 +70,8 @@ export default async function DataDetailPage({ params }: DataDetailPageProps) {
           {error ? (
             <p className="text-destructive">{error}</p>
           ) : dataEntry ? (
-            <DataDetailView initialData={dataEntry} entryId={String(id)} />
+            // Pass the string ID to the client component
+            <DataDetailView initialData={dataEntry} entryId={id} />
           ) : (
              <p className="text-destructive">Data entry not found (ID: {id}) in dataset '{activeDatasetName || 'N/A'}'.</p>
           )}

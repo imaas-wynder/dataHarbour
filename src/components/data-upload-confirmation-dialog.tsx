@@ -27,7 +27,7 @@ import { Loader2, Save, PlusCircle, Edit, FilePlus2 } from "lucide-react";
 interface DataUploadConfirmationDialogProps {
   isOpen: boolean;
   onClose: () => void;
-  data: DataEntry | DataEntry[] | null;
+  data: DataEntry | DataEntry[] | null; // Data can be single entry or array
   onProcessingChange: (isProcessing: boolean) => void;
   allDatasetNames: string[]; // Added prop to receive existing names
 }
@@ -45,7 +45,7 @@ export function DataUploadConfirmationDialog({
   const { toast } = useToast();
   const [isPending, startTransition] = useTransition();
   const [actionType, setActionType] = useState<UploadAction>("addNew");
-  const [amendTargetId, setAmendTargetId] = useState<string>("");
+  const [amendTargetId, setAmendTargetId] = useState<string>(""); // Amend target ID is a string
   const [newDatasetName, setNewDatasetName] = useState<string>(""); // State for new dataset name
   const [error, setError] = useState<string | null>(null);
 
@@ -80,6 +80,12 @@ export function DataUploadConfirmationDialog({
           toast({ variant: "destructive", title: "Error", description: "Cannot amend with an array." });
           return;
       }
+      // Ensure the uploaded data object doesn't contain an 'id' field itself for amendment
+       if (data && typeof data === 'object' && 'id' in data) {
+            setError("Uploaded data for amend action should not contain an 'id' field. The target ID is specified separately.");
+            toast({ variant: "destructive", title: "Error", description: "Remove 'id' field from the JSON data for amend." });
+            return;
+       }
     }
 
     // Validation for 'createNew' action
@@ -97,12 +103,12 @@ export function DataUploadConfirmationDialog({
              return;
         }
          // Check if name already exists (case-insensitive check for robustness)
-         if (allDatasetNames.some(name => name.toLowerCase() === trimmedName.toLowerCase())) {
-            // Optionally allow replacement or show error - for now, show error
-            setError(`A data set named "${trimmedName}" already exists. Please choose a different name or amend existing data.`);
-            toast({ variant: "destructive", title: "Name Exists", description: `Data set "${trimmedName}" already exists.` });
-            return;
-         }
+         // Allow replacement by removing this check, as createOrReplaceDataset handles it
+         // if (allDatasetNames.some(name => name.toLowerCase() === trimmedName.toLowerCase())) {
+         //    setError(`A data set named "${trimmedName}" already exists. Please choose a different name or amend existing data.`);
+         //    toast({ variant: "destructive", title: "Name Exists", description: `Data set "${trimmedName}" already exists.` });
+         //    return;
+         // }
     }
 
     onProcessingChange(true); // Signal parent that processing started
@@ -113,15 +119,25 @@ export function DataUploadConfirmationDialog({
       try {
         if (actionType === "addNew") {
           console.log("Dialog: Calling uploadDataAction (Add New to active dataset)");
-          result = await uploadDataAction(data); // Adds to the currently active dataset
+          // Prepare data for addNew - ensuring string IDs if present
+          const dataToSend = Array.isArray(data)
+            ? data.map(entry => ({ ...entry, id: entry.id ? String(entry.id) : undefined }))
+            : { ...data, id: data.id ? String(data.id) : undefined };
+          result = await uploadDataAction(dataToSend); // Adds/updates in the currently active dataset
         } else if (actionType === "amend"){
-          console.log(`Dialog: Calling updateDataAction (Amend ID: ${amendTargetId} in active dataset)`);
-          result = await updateDataAction(amendTargetId.trim(), data as DataEntry); // Amends in the currently active dataset
+          console.log(`Dialog: Calling updateDataAction (Amend ID: ${amendTargetId.trim()} in active dataset)`);
+          // Data for amend should not have 'id', pass the target ID separately
+          result = await updateDataAction(amendTargetId.trim(), data as Omit<DataEntry, 'id'>);
         } else { // actionType === "createNew"
-            const dataToSend = Array.isArray(data) ? data : [data];
+            // Prepare data, ensuring string IDs if present, or generating new ones
+            const dataArray = Array.isArray(data) ? data : [data];
+            const processedData = dataArray.map(entry => ({
+                ...entry, // Keep original data
+                id: entry.id ? String(entry.id) : undefined // Ensure string ID if present
+            }));
             const datasetName = newDatasetName.trim();
-            console.log(`Dialog: Calling createNewDatasetAction (Create New: ${datasetName})`);
-            result = await createNewDatasetAction(datasetName, dataToSend); // Creates/replaces and sets as active
+            console.log(`Dialog: Calling createNewDatasetAction (Create/Replace: ${datasetName})`);
+            result = await createNewDatasetAction(datasetName, processedData); // Creates/replaces and sets as active
         }
 
         if (result.success) {
@@ -163,9 +179,9 @@ export function DataUploadConfirmationDialog({
   const getConfirmButtonLabel = () => {
     if (isPending) return "Processing...";
     switch (actionType) {
-        case "addNew": return "Confirm Add to Active Set"; // Updated label
+        case "addNew": return "Confirm Add/Update in Active Set"; // Updated label
         case "amend": return "Confirm Amend in Active Set"; // Updated label
-        case "createNew": return "Confirm Create New Set"; // Updated label
+        case "createNew": return "Confirm Create/Replace Set"; // Updated label
         default: return "Confirm";
     }
   }
@@ -182,7 +198,7 @@ export function DataUploadConfirmationDialog({
 
   const isConfirmDisabled = () => {
      if (isPending || !data) return true;
-     if (actionType === 'amend' && (!amendTargetId.trim() || Array.isArray(data))) return true;
+     if (actionType === 'amend' && (!amendTargetId.trim() || Array.isArray(data) || (data && typeof data === 'object' && 'id' in data) )) return true; // Disable if amending array or if data has ID
      if (actionType === 'createNew' && !newDatasetName.trim()) return true; // Disable if name is empty
      return false;
   }
@@ -216,29 +232,29 @@ export function DataUploadConfirmationDialog({
             <div className="flex items-center space-x-3 space-y-0">
               <RadioGroupItem value="addNew" id="r1" />
               <Label htmlFor="r1" className="font-normal cursor-pointer flex items-center gap-2">
-                <PlusCircle className="h-4 w-4 text-green-600" /> Add to Active Data Set
+                <PlusCircle className="h-4 w-4 text-green-600" /> Add/Update in Active Set
               </Label>
             </div>
-             <p className="text-xs text-muted-foreground pl-8">Appends the uploaded entry/entries to the currently selected data set.</p>
+             <p className="text-xs text-muted-foreground pl-8">Adds new entries or updates existing entries (based on ID) in the current data set.</p>
 
             {/* Amend Option */}
             <div className="flex items-center space-x-3 space-y-0 mt-2">
               <RadioGroupItem value="amend" id="r2" />
               <Label htmlFor="r2" className="font-normal cursor-pointer flex items-center gap-2">
-                 <Edit className="h-4 w-4 text-blue-600" /> Amend Entry in Active Set
+                 <Edit className="h-4 w-4 text-blue-600" /> Amend Specific Entry
               </Label>
             </div>
-            <p className="text-xs text-muted-foreground pl-8">Replaces the data of a specific entry ID in the active data set (requires single object upload).</p>
+            <p className="text-xs text-muted-foreground pl-8">Replaces the data of a specific entry ID in the active data set (requires single object upload, without an 'id' field in the JSON).</p>
 
 
             {/* Create New Option */}
             <div className="flex items-center space-x-3 space-y-0 mt-2">
               <RadioGroupItem value="createNew" id="r3" />
               <Label htmlFor="r3" className="font-normal cursor-pointer flex items-center gap-2">
-                 <FilePlus2 className="h-4 w-4 text-orange-600" /> Create New Data Set
+                 <FilePlus2 className="h-4 w-4 text-orange-600" /> Create/Replace Data Set
               </Label>
             </div>
-             <p className="text-xs text-muted-foreground pl-8">Creates a new data set with the uploaded data and sets it as active. Existing data sets are kept.</p>
+             <p className="text-xs text-muted-foreground pl-8">Creates a new data set with the uploaded data or replaces an existing one with the same name. Sets it as active.</p>
           </RadioGroup>
 
            {/* Conditional Inputs */}
@@ -255,16 +271,22 @@ export function DataUploadConfirmationDialog({
                      disabled={isPending}
                      className="bg-background"
                    />
+                  {(data && typeof data === 'object' && 'id' in data && !Array.isArray(data)) && (
+                       <p className="text-xs text-destructive">Remove 'id' field from JSON data when amending.</p>
+                  )}
+                  {Array.isArray(data) && (
+                       <p className="text-xs text-destructive">Cannot amend with an array of objects.</p>
+                  )}
                  </div>
                )}
 
                {actionType === "createNew" && (
                  <div className="grid w-full max-w-sm items-center gap-1.5">
-                   <Label htmlFor="new-dataset-name">New Data Set Name</Label>
+                   <Label htmlFor="new-dataset-name">Data Set Name</Label>
                    <Input
                      id="new-dataset-name"
                      type="text"
-                     placeholder="Enter a unique name"
+                     placeholder="Enter name (will replace if exists)"
                      value={newDatasetName}
                      onChange={(e) => setNewDatasetName(e.target.value)}
                      disabled={isPending}
@@ -272,8 +294,11 @@ export function DataUploadConfirmationDialog({
                      aria-describedby="new-dataset-name-desc"
                    />
                    <p id="new-dataset-name-desc" className="text-xs text-muted-foreground">
-                     Must be unique. Allowed: letters, numbers, space, -, _
+                     Allowed: letters, numbers, space, -, _
                    </p>
+                    {allDatasetNames.some(name => name.toLowerCase() === newDatasetName.trim().toLowerCase()) && (
+                         <p className="text-xs text-orange-600">Note: A data set with this name exists and will be replaced.</p>
+                     )}
                  </div>
                )}
            </div>
