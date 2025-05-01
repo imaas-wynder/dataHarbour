@@ -8,9 +8,9 @@ This is a Next.js application built within Firebase Studio for managing and expl
 *   **Dataset Management:**
     *   Create new datasets from uploaded data.
     *   Replace existing datasets.
-    *   Switch between different datasets.
+    *   Switch between different datasets using a dropdown.
 *   **Data Preview:** View data entries and their relationships in a table.
-*   **Data Filtering:** Filter the data preview based on relationships.
+*   **Data Filtering:** Filter the data preview based on relationships (Source ID).
 *   **Data Detail View:** Inspect individual data entries.
 *   **Manual Editing:** Edit data entries directly via a JSON editor.
 *   **AI Data Cleaning:** Use Genkit (Google AI) to suggest and apply data cleaning transformations.
@@ -22,7 +22,7 @@ This is a Next.js application built within Firebase Studio for managing and expl
 ### Prerequisites
 
 1.  **Node.js and npm:** Ensure you have Node.js (v18 or later recommended) and npm installed.
-2.  **PostgreSQL:** Install PostgreSQL server (v12 or later recommended) and have it running. You can install it locally or use a managed service.
+2.  **PostgreSQL:** Install PostgreSQL server (v12 or later recommended) and **ensure it is running**. You can install it locally or use a managed service.
 3.  **Git:** (Optional, for cloning if not already done).
 
 ### Setup
@@ -39,24 +39,34 @@ This is a Next.js application built within Firebase Studio for managing and expl
     ```
 
 3.  **Configure PostgreSQL:**
+    *   **Start your PostgreSQL server.** This is a common cause of connection errors. Check your operating system's services or use commands like `pg_ctl start` (depending on your installation method).
     *   Create a PostgreSQL database (e.g., `dataharbor_db`).
     *   Create a PostgreSQL user and grant privileges to the database (e.g., `your_db_user`). Make note of the password.
     *   You can use tools like `psql` or graphical clients (pgAdmin, DBeaver) for this. Example `psql` commands:
         ```sql
+        -- Connect to PostgreSQL as a superuser (like 'postgres')
+        -- sudo -u postgres psql
+
         CREATE DATABASE dataharbor_db;
         CREATE USER your_db_user WITH PASSWORD 'your_db_password';
         GRANT ALL PRIVILEGES ON DATABASE dataharbor_db TO your_db_user;
-        -- Connect to the database (\c dataharbor_db) and grant schema privileges if needed:
+
+        -- Optional: If schema 'public' needs explicit grants (less common):
+        -- \c dataharbor_db
         -- GRANT ALL ON SCHEMA public TO your_db_user;
+        -- GRANT ALL ON ALL TABLES IN SCHEMA public TO your_db_user; -- For existing tables
+        -- ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO your_db_user; -- For future tables
         ```
+    *   **Verify Connection Settings:** Ensure your PostgreSQL server is configured to accept connections from `localhost` (or the host specified in `.env`) on the correct port (usually `5432`). Check the `postgresql.conf` and `pg_hba.conf` files in your PostgreSQL data directory if you encounter connection issues.
 
 4.  **Configure Environment Variables:**
-    *   Create a file named `.env` in the root of the project.
-    *   Copy the contents from `.env.example` (if provided) or add the following, replacing the placeholder values with your PostgreSQL connection details:
+    *   Create a file named `.env` in the root of the project (if it doesn't exist).
+    *   Copy the contents from `.env.example` (if provided) or add the following, **carefully replacing the placeholder values** with your actual PostgreSQL connection details:
         ```dotenv
         # PostgreSQL Connection Details
-        POSTGRES_HOST=localhost # Or your DB host address
-        POSTGRES_PORT=5432      # Or your DB port
+        # Ensure these values match your running PostgreSQL server configuration.
+        POSTGRES_HOST=localhost # Or your DB host address (e.g., 127.0.0.1)
+        POSTGRES_PORT=5432      # Or the port your PostgreSQL server is listening on
         POSTGRES_USER=your_db_user
         POSTGRES_PASSWORD=your_db_password
         POSTGRES_DATABASE=dataharbor_db
@@ -67,11 +77,12 @@ This is a Next.js application built within Firebase Studio for managing and expl
         ```
     *   **Important:** Add `.env` to your `.gitignore` file to avoid committing sensitive credentials.
 
-5.  **Run the Development Server:**
+5.  **Run Database Schema Initialization (and Development Server):**
+    The database tables are created automatically when the application starts. Run the development server:
     ```bash
     npm run dev
     ```
-    The application should now be running, typically at `http://localhost:9002`. The database schema (tables) will be automatically created or verified on the first run.
+    The application should now be running, typically at `http://localhost:9002`. Check the terminal output for messages about database schema initialization. If you encounter connection errors (like `ECONNREFUSED`), see the troubleshooting section below.
 
 6.  **(Optional) Run Genkit Development Server (for AI features):**
     If you plan to use or develop the AI cleaning features locally, run the Genkit server in a separate terminal:
@@ -81,6 +92,52 @@ This is a Next.js application built within Firebase Studio for managing and expl
     # npm run genkit:watch
     ```
     Make sure you have set the `GOOGLE_GENAI_API_KEY` in your `.env` file for Genkit to work.
+
+### Troubleshooting Connection Errors (`ECONNREFUSED`)
+
+If you see a "connect ECONNREFUSED 127.0.0.1:5432" (or similar host/port) error in the terminal when starting the app (`npm run dev`), it means the application could not establish a connection to the PostgreSQL server. Check the following:
+
+1.  **Is PostgreSQL Running?**
+    *   Use your system's tools (Task Manager on Windows, Activity Monitor on macOS, `services.msc` on Windows, `systemctl status postgresql` or `service postgresql status` on Linux) to confirm the PostgreSQL server process is active.
+    *   If it's not running, start it. (e.g., `sudo systemctl start postgresql`, `pg_ctl start -D /path/to/data/directory`).
+
+2.  **Correct `.env` Settings?**
+    *   Double-check `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, and `POSTGRES_DATABASE` in your `.env` file.
+    *   They must **exactly match** your PostgreSQL setup. Common mistakes include typos, incorrect passwords, or wrong database names.
+    *   Ensure the `.env` file is in the project's root directory and the app was restarted after changes.
+
+3.  **Correct Port?**
+    *   Is PostgreSQL listening on the port specified in `POSTGRES_PORT` (default is `5432`)?
+    *   Check your `postgresql.conf` file (location varies by OS/installation method - find it using `psql -U postgres -c 'SHOW config_file;'`). Look for the `port` setting.
+    *   Ensure the `.env` file `POSTGRES_PORT` matches this value.
+
+4.  **Listening Address (`listen_addresses`)?**
+    *   Is PostgreSQL configured to listen on the address specified in `POSTGRES_HOST` (default `localhost`)?
+    *   Check the `listen_addresses` setting in `postgresql.conf`.
+    *   For local development connecting from the same machine, `localhost` or `127.0.0.1` is usually correct. If `listen_addresses` is set to something else (or commented out with a default that doesn't include `localhost`), the connection might fail. Setting it to `'*'` listens on all interfaces (use with caution, consider security implications). You might need to restart the PostgreSQL server after changing this file.
+
+5.  **Firewall?**
+    *   Is a firewall (Windows Firewall, `ufw` on Ubuntu, `firewalld` on CentOS, macOS firewall) blocking incoming connections to the PostgreSQL port (`5432` by default)?
+    *   Try temporarily disabling the firewall to test, or add a specific rule to allow connections on the PostgreSQL port.
+
+6.  **Authentication (`pg_hba.conf`)?**
+    *   This file controls which hosts are allowed to connect, which users can connect, which databases they can access, and the authentication method required.
+    *   Find `pg_hba.conf` (usually in the same directory as `postgresql.conf`).
+    *   Look for lines that match your connection attempt. For a local connection from the app using user `your_db_user` to database `dataharbor_db`, you'll need a line similar to:
+        ```
+        # TYPE  DATABASE        USER            ADDRESS                 METHOD
+        host    dataharbor_db   your_db_user    127.0.0.1/32            md5   # Or scram-sha-256
+        # or for connections via local Unix socket (common on Linux/macOS if HOST is localhost)
+        # local   dataharbor_db   your_db_user                            md5   # Or scram-sha-256
+        ```
+    *   `127.0.0.1/32` allows connections specifically from the IPv4 loopback address. `::1/128` would be for IPv6.
+    *   The `METHOD` (e.g., `md5`, `scram-sha-256`) determines how the password is verified. Ensure it matches what your setup expects. `trust` allows connection without a password (not recommended for production).
+    *   You might need to reload the PostgreSQL configuration after changing this file (e.g., `sudo systemctl reload postgresql` or `pg_ctl reload`).
+
+7.  **Database/User Exists?**
+    *   Confirm that the database (`dataharbor_db`) and user (`your_db_user`) actually exist in PostgreSQL and that the user has connection privileges. Use `psql` or a GUI tool to verify.
+
+By checking these points systematically, you should be able to identify and resolve the `ECONNREFUSED` error. Check the application startup logs for more detailed connection error messages and troubleshooting tips.
 
 ### Project Structure
 
@@ -98,18 +155,19 @@ This is a Next.js application built within Firebase Studio for managing and expl
 
 1.  **Open the application:** Navigate to `http://localhost:9002` (or your configured port).
 2.  **Upload Data:** Use the "Upload New Data" form. Paste valid JSON (a single object or an array of objects).
-3.  **Confirm Upload:** Choose an action:
+3.  **Confirm Upload:** Choose an action in the dialog:
     *   **Add/Update in Active Set:** Adds new entries or updates existing ones based on ID in the currently selected dataset.
-    *   **Amend Specific Entry:** Replaces the data for a specific ID (requires single object upload without an 'id' field).
-    *   **Create/Replace Data Set:** Creates a new dataset or overwrites an existing one with the uploaded data.
-4.  **Switch Datasets:** Use the dropdown in the "Data Preview" section to switch between available datasets.
-5.  **View/Clean Data:** Click the "View / Clean" button on a row in the preview table to navigate to the detail page.
-6.  **Detail Page:**
+    *   **Amend Specific Entry:** Replaces the data for a specific ID in the active dataset (requires single object upload without an 'id' field in the JSON).
+    *   **Create/Replace Data Set:** Creates a new dataset or overwrites an existing one with the uploaded data. Sets the new/replaced dataset as active.
+4.  **Switch Datasets:** Use the dropdown in the "Data Preview" section to switch between available datasets. The data preview will update automatically.
+5.  **Filter Data:** Enter a Source Entry ID in the filter input and click "Filter" to see only entries related to that source ID. Click "Clear" to remove the filter.
+6.  **View/Clean Data:** Click the "View / Clean" button on a row in the preview table to navigate to the detail page for that entry.
+7.  **Detail Page:**
     *   View the full data entry.
     *   Click "Edit" to manually modify the JSON data.
     *   Click "Clean Data with AI" to get cleaning suggestions (requires Genkit setup and API key). Apply valid suggestions.
     *   Add relationships to other entries by entering the Target Entry ID and clicking "Add Relationship".
-    *   View related entries in the table.
+    *   View related entries in the table below. Click "Edit Headers" to customize the columns shown for related entries.
 
 ## Further Development
 
@@ -117,5 +175,6 @@ This is a Next.js application built within Firebase Studio for managing and expl
 *   Add more sophisticated data visualization options.
 *   Enhance error handling and user feedback.
 *   Implement user authentication and authorization if needed.
-*   Add database migrations for schema changes.
+*   Add database migrations for schema changes (using tools like `node-pg-migrate`).
 *   Improve AI cleaning prompts and capabilities.
+

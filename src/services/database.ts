@@ -9,6 +9,7 @@ import { v4 as uuidv4 } from 'uuid';
 // ========================================================================
 // This service now connects to a PostgreSQL database.
 // Ensure your environment variables are set correctly in .env
+// Check the README.md for troubleshooting database connection errors.
 // ========================================================================
 
 
@@ -17,42 +18,68 @@ let pool: Pool | null = null;
 
 function getPool(): Pool {
     if (!pool) {
-        console.log('[Database Service] Creating PostgreSQL connection pool...');
+        const host = process.env.POSTGRES_HOST || 'localhost';
+        const port = parseInt(process.env.POSTGRES_PORT || '5432', 10);
+        const user = process.env.POSTGRES_USER;
+        const password = process.env.POSTGRES_PASSWORD; // Keep confidential
+        const database = process.env.POSTGRES_DATABASE;
+
+        if (!user || !password || !database) {
+             console.error("[Database Service] ERROR: Missing required PostgreSQL environment variables (POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DATABASE).");
+             throw new Error("Missing required PostgreSQL environment variables.");
+        }
+
+        console.log(`[Database Service] Creating PostgreSQL connection pool with config: { host: ${host}, port: ${port}, user: ${user}, database: ${database}, password: [MASKED] }`);
+
         pool = new Pool({
-            host: process.env.POSTGRES_HOST,
-            port: parseInt(process.env.POSTGRES_PORT || '5432', 10),
-            user: process.env.POSTGRES_USER,
-            password: process.env.POSTGRES_PASSWORD,
-            database: process.env.POSTGRES_DATABASE,
+            host: host,
+            port: port,
+            user: user,
+            password: password,
+            database: database,
             max: 10, // Max number of clients in the pool
             idleTimeoutMillis: 30000, // How long a client is allowed to remain idle before being closed
-            connectionTimeoutMillis: 2000, // How long to wait for a connection acquisition before timing out
+            connectionTimeoutMillis: 5000, // Increased timeout for slower connections
         });
 
         pool.on('error', (err, client) => {
-            console.error('[Database Service] Unexpected error on idle client', err);
-            // Optionally try to reconnect or handle error appropriately
+            console.error('[Database Service] PostgreSQL Pool Error: Unexpected error on idle client.', err);
+            // Consider more robust error handling if needed
         });
 
         pool.on('connect', (client) => {
-            console.log('[Database Service] Client connected to PostgreSQL');
+            console.log('[Database Service] Client connected to PostgreSQL.');
         });
 
         pool.on('acquire', (client) => {
-            console.log('[Database Service] Client acquired from pool');
+            // This might be too verbose for regular use, uncomment if needed for debugging pool usage
+            // console.log('[Database Service] Client acquired from pool.');
         });
 
         pool.on('remove', (client) => {
-            console.log('[Database Service] Client removed from pool');
+            // This might be too verbose, uncomment if needed
+            // console.log('[Database Service] Client removed from pool.');
         });
 
-         // Test the connection immediately
+         // Test the connection immediately and provide clearer error context
+         console.log('[Database Service] Attempting initial connection test to PostgreSQL...');
          pool.query('SELECT NOW()')
              .then(res => console.log('[Database Service] PostgreSQL Pool connected successfully at:', res.rows[0].now))
              .catch(err => {
-                 console.error('[Database Service] Failed to connect PostgreSQL Pool:', err);
-                 // Prevent further operations if initial connection fails badly?
-                 // For now, let operations fail individually.
+                 console.error('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!');
+                 console.error('[Database Service] FATAL: Initial PostgreSQL Pool connection test failed.');
+                 console.error(`   Error Code: ${err.code}`);
+                 console.error(`   Error Message: ${err.message}`);
+                 console.error(`   Attempted to connect to: postgres://${user}:[MASKED]@${host}:${port}/${database}`);
+                 console.error('   Troubleshooting Tips:');
+                 console.error('     1. Is the PostgreSQL server running? Check services or use `pg_ctl status`.');
+                 console.error('     2. Are the .env variables (POSTGRES_HOST, POSTGRES_PORT, POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DATABASE) correct?');
+                 console.error('     3. Is PostgreSQL configured to accept connections from this application host? Check `postgresql.conf` (listen_addresses) and `pg_hba.conf` (authentication methods).');
+                 console.error('     4. Is a firewall blocking the connection to the PostgreSQL port?');
+                 console.error('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!');
+                 // Allow the application to continue starting, but subsequent DB operations will likely fail.
+                 // Throwing here would prevent the app server from starting at all.
+                 // throw new Error(`Initial PostgreSQL connection failed: ${err.message}`);
              });
 
     }
@@ -95,8 +122,16 @@ let activeDatasetName: string | null = null;
 
 
 async function initializeSchema(): Promise<void> {
-    console.log('[Database Service] Initializing database schema...');
-    const client = await getPool().connect();
+    console.log('[Database Service] Initializing database schema if needed...');
+    let client;
+    try {
+        client = await getPool().connect(); // Use getPool() which includes the connection test
+    } catch (connectError) {
+         console.error('[Database Service] Failed to acquire client for schema initialization:', connectError);
+         // Cannot proceed with schema init if connection fails
+         throw new Error(`Failed to connect to database for schema initialization: ${connectError.message}`);
+    }
+
     try {
         await client.query('BEGIN');
         await client.query(CREATE_DATASETS_TABLE);
@@ -116,7 +151,7 @@ async function initializeSchema(): Promise<void> {
         }
 
         await client.query('COMMIT');
-        console.log('[Database Service] Schema initialized successfully.');
+        console.log('[Database Service] Schema initialization check complete.');
 
         // Set active dataset if not already set
         if (!activeDatasetName) {
@@ -125,11 +160,18 @@ async function initializeSchema(): Promise<void> {
         }
 
     } catch (err) {
-        await client.query('ROLLBACK');
-        console.error('[Database Service] Error initializing schema:', err);
+        console.error('[Database Service] Error during schema initialization transaction:', err);
+        try {
+             await client.query('ROLLBACK');
+             console.log('[Database Service] Schema initialization transaction rolled back.');
+        } catch (rollbackErr) {
+             console.error('[Database Service] Error rolling back schema initialization transaction:', rollbackErr);
+        }
         throw err; // Re-throw to indicate failure
     } finally {
-        client.release();
+         if (client) {
+            client.release();
+         }
     }
 }
 
@@ -164,10 +206,15 @@ async function populateDefaultData(client: any): Promise<void> {
 // Initialize schema on load - wrap in async IIFE
 (async () => {
     try {
+        // getPool() is called internally by initializeSchema
         await initializeSchema();
     } catch (error) {
-        console.error("FATAL: Failed to initialize database schema on startup.", error);
-        // Consider exiting the process if schema init is critical
+        console.error("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+        console.error("FATAL: Failed to initialize database schema on startup.");
+        console.error("   Please check the database connection details in .env and ensure the PostgreSQL server is running and accessible.");
+        console.error("   See detailed error above or in the README.md troubleshooting section.");
+        console.error("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+        // Consider exiting the process if schema init is critical, but this might hide the error in some environments
         // process.exit(1);
     }
 })();
@@ -202,7 +249,7 @@ export async function getActiveDatasetName(): Promise<string | null> {
  */
 export async function getAllDatasetNames(): Promise<string[]> {
     console.log('[getAllDatasetNames Service] Fetching all dataset names from DB...');
-    const client = await getPool().connect();
+    const client = await getPool().connect(); // Ensures pool is initialized and attempts connection
     try {
         const result: QueryResult<{ name: string }> = await client.query('SELECT name FROM datasets ORDER BY name');
         const names = result.rows.map(row => row.name);
@@ -210,7 +257,7 @@ export async function getAllDatasetNames(): Promise<string[]> {
         return names;
     } catch (error) {
         console.error('[getAllDatasetNames Service] Error fetching dataset names:', error);
-        throw new Error('Failed to fetch dataset names from database.');
+        throw new Error(`Failed to fetch dataset names from database: ${error.message}`);
     } finally {
         client.release();
     }
@@ -368,7 +415,7 @@ export async function getAllData(): Promise<DataEntry[]> {
         return entries;
     } catch (error) {
         console.error(`[getAllData Service - Active: ${currentActiveDataset}] Error fetching data:`, error);
-        throw new Error('Failed to fetch data from database.');
+        throw new Error(`Failed to fetch data from database: ${error.message}`);
     } finally {
         client.release();
     }
@@ -412,7 +459,7 @@ export async function getDataById(id: number | string): Promise<DataEntry | null
 
     } catch (error) {
         console.error(`[getDataById Service - Active: ${currentActiveDataset}] Error fetching data for ID ${searchId}:`, error);
-        throw new Error(`Failed to fetch data for ID ${searchId} from database.`);
+        throw new Error(`Failed to fetch data for ID ${searchId} from database: ${error.message}`);
     } finally {
         client.release();
     }
@@ -456,7 +503,7 @@ export async function getDataByIds(ids: (number | string)[]): Promise<DataEntry[
         return entries;
     } catch (error) {
         console.error(`[getDataByIds Service - Active: ${currentActiveDataset}] Error fetching data for IDs [${searchIds.join(', ')}]:`, error);
-        throw new Error('Failed to fetch multiple data entries from database.');
+        throw new Error(`Failed to fetch multiple data entries from database: ${error.message}`);
     } finally {
         client.release();
     }
@@ -503,7 +550,7 @@ export async function updateDataById(id: number | string, updatedData: Partial<D
         return true;
     } catch (error) {
         console.error(`[updateDataById Service - Active: ${currentActiveDataset}] Error updating data for ID ${updateId}:`, error);
-        throw new Error(`Failed to update data for ID ${updateId} in database.`);
+        throw new Error(`Failed to update data for ID ${updateId} in database: ${error.message}`);
     } finally {
         client.release();
     }
@@ -588,7 +635,7 @@ export async function addRelationship(sourceEntryId: number | string, targetEntr
     } catch (error) {
         await client.query('ROLLBACK');
         console.error(`[addRelationship Service - Active: ${currentActiveDataset}] Error adding relationship ${sourceIdStr} -> ${targetIdStr}:`, error);
-        throw new Error(`Failed to add relationship ${sourceIdStr} -> ${targetIdStr} in database.`);
+        throw new Error(`Failed to add relationship ${sourceIdStr} -> ${targetIdStr} in database: ${error.message}`);
     } finally {
         client.release();
     }
@@ -625,7 +672,7 @@ export async function getRelationshipsBySourceId(sourceEntryId: number | string)
         return result.rows;
     } catch (error) {
         console.error(`[getRelationshipsBySourceId Service - Active: ${currentActiveDataset}] Error fetching relationships for source ID ${sourceIdStr}:`, error);
-        throw new Error(`Failed to fetch relationships for ID ${sourceIdStr} from database.`);
+        throw new Error(`Failed to fetch relationships for ID ${sourceIdStr} from database: ${error.message}`);
     } finally {
         client.release();
     }
@@ -659,7 +706,7 @@ export async function getAllRelationships(): Promise<RelationshipEntry[]> {
         return result.rows;
     } catch (error) {
         console.error(`[getAllRelationships Service - Active: ${currentActiveDataset}] Error fetching all relationships:`, error);
-        throw new Error('Failed to fetch all relationships from database.');
+        throw new Error(`Failed to fetch all relationships from database: ${error.message}`);
     } finally {
         client.release();
     }
@@ -688,3 +735,4 @@ process.on('SIGTERM', async () => {
   }
   process.exit(0);
 });
+
