@@ -4,7 +4,7 @@
 
 import { useState, useTransition, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { RefreshCw, Filter, X, Database } from "lucide-react"; // Added Database icon
+import { RefreshCw, Filter, X, Database } from "lucide-react"; // Removed BarChartHorizontalBig
 
 import type { DataEntry, RelationshipEntry } from "@/services/types";
 import { DataPreviewTable } from "@/components/data-preview-table";
@@ -20,8 +20,9 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select"; // Added Select components
-import { setActiveDatasetAction } from "@/actions/data-actions"; // Import action to set active dataset
+} from "@/components/ui/select";
+import { setActiveDatasetAction } from "@/actions/data-actions";
+// Removed DataVisualization import
 
 
 interface DataPreviewSectionProps {
@@ -42,13 +43,15 @@ export function DataPreviewSection({
   const router = useRouter();
   const [isRefreshing, startRefreshTransition] = useTransition();
   const [isFiltering, startFilteringTransition] = useTransition();
-  const [isSwitchingDataset, startSwitchingDatasetTransition] = useTransition(); // Transition for dataset switch
+  const [isSwitchingDataset, startSwitchingDatasetTransition] = useTransition();
 
   const [error, setError] = useState<string | null>(initialError);
   const [filterError, setFilterError] = useState<string | null>(null);
   const [filterSourceId, setFilterSourceId] = useState<string>('');
   const [displayedData, setDisplayedData] = useState<DataEntry[]>(initialData);
-  const [currentActiveName, setCurrentActiveName] = useState<string | null>(initialActiveName); // Local state for active name
+  const [currentActiveName, setCurrentActiveName] = useState<string | null>(initialActiveName);
+
+  // Removed visualization dialog state
 
   const { toast } = useToast();
 
@@ -148,8 +151,9 @@ export function DataPreviewSection({
     startFilteringTransition(async () => {
       try {
         const sourceIdStr = filterSourceId.trim();
+        // Use relationships from props (which should be for the active dataset)
         const targetIds = new Set(
-            initialRelationships // Use the relationships passed for the current active dataset
+            initialRelationships
             .filter(rel => String(rel.source_entry_id) === sourceIdStr)
             .map(rel => String(rel.target_entry_id))
         );
@@ -169,6 +173,7 @@ export function DataPreviewSection({
         }
 
         if (targetIds.size > 0) {
+             // Filter initialData based on targetIds
              const filteredResults = initialData.filter(entry => targetIds.has(String(entry.id)));
              setDisplayedData(filteredResults);
              toast({
@@ -248,6 +253,9 @@ export function DataPreviewSection({
                         )}
                     </SelectContent>
                 </Select>
+
+                 {/* Removed Visualization Dialog Trigger */}
+
                  {/* Refresh Button */}
               <Button
                 variant="outline"
@@ -281,7 +289,7 @@ export function DataPreviewSection({
                   <Filter className="mr-2 h-4 w-4" />
                   {isFiltering ? "Filtering..." : "Filter"}
                 </Button>
-                 <Button variant="outline" onClick={handleClearFilter} disabled={isActionPending || !currentActiveName} className="w-full sm:w-auto">
+                 <Button variant="outline" onClick={handleClearFilter} disabled={isActionPending || !currentActiveName || !filterSourceId.trim()} className="w-full sm:w-auto">
                   <X className="mr-2 h-4 w-4" />
                   Clear
                  </Button>
@@ -310,7 +318,7 @@ export function DataPreviewSection({
           <DataPreviewTable data={displayedData} relationships={initialRelationships} />
         )}
         {isActionPending && <p className="text-muted-foreground text-sm mt-2">
-            {isRefreshing ? 'Refreshing data...' : isFiltering ? 'Applying filter...' : 'Switching dataset...'}
+            {isRefreshing ? 'Refreshing data...' : isFiltering ? 'Applying filter...' : isSwitchingDataset ? 'Switching dataset...' : ''}
         </p>}
       </CardContent>
     </Card>
