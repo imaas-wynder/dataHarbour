@@ -1,7 +1,7 @@
 
 import 'dotenv/config';
 import { DataUploadForm } from "@/components/data-upload-form";
-import { pool } from "@/services/db/client";
+//import { pool } from "@/services/db/client";
 import { DataPreviewSection } from "@/components/data-preview-section";
 import { getAllData, getAllRelationships, getAllPostgresItems } from "@/services/db/data-actions";
 

@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Database Items</title>
+</head>
+<body>
+  <h1>Items from Database</h1>
+  <ul id="item-list">
+    </ul>
+
+  <script>
+    fetch('/items')
+      .then(response => response.json())
+      .then(data => {
+        const itemList = document.getElementById('item-list');
+        if (itemList) {
+          data.forEach(item => {
+            const listItem = document.createElement('li');
+            listItem.textContent = `ID: ${item.id}, Name: ${item.name}, Description: ${item.description || 'N/A'}`;
+            itemList.appendChild(listItem);
+          });
+        }
+      })
+      .catch(error => {
+        console.error('Error fetching items:', error);
+        const itemList = document.getElementById('item-list');
+        if (itemList) {
+          itemList.textContent = 'Failed to load items.';
+        }
+      });
+  </script>
+</body>
+</html>

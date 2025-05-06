@@ -1,0 +1,21 @@
+import express, { Request, Response } from 'express';
+import { getAllItems } from './data/itemRepository'; // Adjust the path as needed
+
+const app = express();
+const port = 3000;
+
+app.get('/items', async (req: Request, res: Response) => {
+  try {
+    const items = await getAllItems();
+    // In a real application, you might render a template here
+    // or send the data as JSON for a frontend framework to consume.
+    res.json(items);
+  } catch (error) {
+    console.error('Error handling /items request:', error);
+    res.status(500).send('Error fetching data');
+  }
+});
+
+app.listen(port, () => {
+  console.log(`Server listening on port ${port}`);
+});

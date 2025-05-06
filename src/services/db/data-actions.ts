@@ -1,10 +1,17 @@
 import { QueryResult, QueryResultRow } from 'pg';
 import { v4 as uuidv4 } from 'uuid';
-import {getPool} from './client';
-import { DataEntry, RelationshipEntry } from '../types';
+//import { DataEntry, RelationshipEntry } from '../types';
 import { SHOW_ALL_TABLES, SHOW_ALL_DATABASES, SHOW_ALL_RELATIONSHIPS } from './schema';
-import { getPool } from './client';
 
+require('dotenv').config(); // Load environment variables from .env
+
+const DATABASE_HOST = process.env.DATABASE_HOST
+const DATABASE_PORT = process.env.DATABASE_PORT
+const DATABASE_USER = process.env.DATABASE_USER
+const DATABASE_PASSWORD = process.env.DATABASE_PASSWORD
+const DATABASE_NAME = process.env.DATABASE_NAME
+
+console.log("Database URL:", DATABASE_HOST, DATABASE_USER);
 
 export type DataEntry = any
 export async function addData({ data }: { data: DataEntry | DataEntry[]; }): Promise<boolean> {
@@ -13,7 +20,7 @@ export async function addData({ data }: { data: DataEntry | DataEntry[]; }): Pro
         return false;
     }
 
-    const client = await getPool.connect();
+    const 
    try {
         await client.query('BEGIN');
 
