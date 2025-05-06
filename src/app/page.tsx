@@ -1,7 +1,12 @@
 
+import 'dotenv/config';
 import { DataUploadForm } from "@/components/data-upload-form";
+import { pool } from "@/services/db/client";
 import { DataPreviewSection } from "@/components/data-preview-section";
-import { getAllData, getAllRelationships, getActiveDatasetName, getAllDatasetNames } from "@/services/database"; // Import dataset name functions
+import { getAllData, getAllRelationships, getAllPostgresItems } from "@/services/db/data-actions";
+
+
+
 import type { DataEntry, RelationshipEntry } from "@/services/types"; // Import types
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
@@ -10,42 +15,42 @@ export const dynamic = 'force-dynamic'; // Ensure data is fetched on each reques
 
 export default async function Home() {
   let initialData: DataEntry[] = [];
-  let initialRelationships: RelationshipEntry[] = [];
-  let activeDatasetName: string | null = null;
+  let activeDatasetName: string | null = 'demo';
   let allDatasetNames: string[] = [];
+  let relationships: any[] = [];
   let error: string | null = null;
-
+  let tables: any[] = [];
+  let databases: any[] = [];
+  
   try {
-    // Fetch active dataset name and all names first
-    activeDatasetName = await getActiveDatasetName();
-    allDatasetNames = await getAllDatasetNames();
+      const client = await pool().connect();
+      client.release();
+    
+    
+    const [allData, postgresItems] = await Promise.all([
+      getAllData(activeDatasetName),
+      getAllPostgresItems(),
+    ]);
+    [tables, databases, relationships] = postgresItems;
 
-    // Fetch data and relationships for the active dataset
-    if (activeDatasetName) {
-        [initialData, initialRelationships] = await Promise.all([
-            getAllData(),      // Fetches from active dataset
-            getAllRelationships(), // Fetches from active dataset
-        ]);
-    } else {
-        // Handle case where no dataset is active (e.g., initial state or error)
+    
+     if (allData.length === 0) {
         error = "No active dataset selected. Please create or select a dataset.";
         initialData = [];
-        initialRelationships = [];
         // Keep allDatasetNames as fetched, it might still be useful
     }
 
   } catch (e) {
     console.error("Failed to fetch initial data, relationships, or dataset names:", e);
     error = `Failed to load data for dataset '${activeDatasetName || 'N/A'}'. Please try again later.`;
-    if (e instanceof Error) {
-        error = `${error} Details: ${e.message}`;
+    if (e instanceof Error) {        error = `${error} Details: ${e.message}`;
     }
     // Reset on error, but keep dataset names if fetched
     initialData = [];
-    initialRelationships = [];
-    activeDatasetName = await getActiveDatasetName(); // Re-fetch active name in case it changed during error
-    allDatasetNames = await getAllDatasetNames(); // Re-fetch all names
+     const { getAllData, getAllRelationships, getAllPostgresItems } = await import("@/services/db/data-actions");
+   const [postgresItems] = await Promise.all([getAllPostgresItems()]);
   }
+
 
   return (
     <div className="space-y-8">
@@ -62,8 +67,8 @@ export default async function Home() {
 
       {/* Pass dataset names and active name to the preview section */}
       <DataPreviewSection
-        initialData={initialData}
-        initialRelationships={initialRelationships}
+       // initialData={initialData}
+       // relationships={relationships}
         activeDatasetName={activeDatasetName}
         allDatasetNames={allDatasetNames}
         error={error}

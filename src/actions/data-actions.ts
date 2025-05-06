@@ -1,26 +1,22 @@
 
 // src/actions/data-actions.ts
 'use server';
-import pool from '@/services/db/client';
+//import pool from '@/services/db/client';
 
-import {
-    addData,
-    updateDataById,
-    getDataById,
-    getDataByIds,
-    addRelationship,
-    getRelationshipsBySourceId,
-    getAllData,
-    getAllRelationships,
-    setActiveDataset,        // Import new service function
-    createOrReplaceDataset,  // Import new service function
-    getActiveDatasetName,    // Import new service function
-    getAllDatasetNames,      // Import new service function
-    // Removed replaceDatabase import as it's superseded by createOrReplaceDataset
-} from '@/services/database';
+import { 
+    addData, 
+    updateDataById, 
+    getDataById, 
+    getDataByIds, 
+    addRelationship, 
+    getRelationshipsBySourceId, 
+    getAllData, getAllRelationships
+} from '@/services/db/data-actions';
 import type { DataEntry, RelationshipEntry } from '@/services/types'; // Import types
 import { revalidatePath } from 'next/cache';
 import { cleanDataFlow } from '@/ai/flows/clean-data-flow';
+import { setActiveDataset, getActiveDatasetName, createOrReplaceDataset } from '@/services/db/data-actions';
+
 
 interface ActionResult {
   success: boolean;
