@@ -10,19 +10,34 @@
     pkgs.devbox
   ];
   # Sets environment variables in the workspace
-  env = {};
+  env = {
+    POSTGRESQL_CONN_STRING = "postgresql://user:harbor@localhost:5432/dharbour?sslmode=disable";
+  };
+  services.postgres = { enable = true;};
+
   idx = {
     # Search for the extensions you want on https://open-vsx.org/ and use "publisher.id"
     extensions = [
       # "vscodevim.vim"
+      "mtxr.sqltools-driver-pg"
+      ",xtr.sqltools"
     ];
+
     workspace = {
       onCreate = {
         default.openFiles = [
-          "src/app/page.tsx"
+          "src/app/page.tsx" "READ.md"
         ];
+        setup = ''
+        initdb -D local
+        psql --dbname=postgres -c "ALTER USER \"user\" PASSWORD 'harbor';"
+        psql --dbname=postgres -c "CREATE DATABASE dharbour;"
+        psql --dbname=dharbour -f create.sql
+        psql --dbname=dharbour -f upload.sql
+        '';
       };
     };
+
     # Enable previews and customize configuration
     previews = {
       enable = true;
@@ -31,7 +46,7 @@
           command = ["npm" "run" "dev" "--" "--port" "$PORT" "--hostname" "0.0.0.0"];
           manager = "web";
         };
-      };
-    };
-  };
+        };
+        };
+        };
 }

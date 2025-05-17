@@ -1,6 +1,6 @@
 import { QueryResult, QueryResultRow } from 'pg';
 import { v4 as uuidv4 } from 'uuid';
-//import { DataEntry, RelationshipEntry } from '../types';
+import { DataEntry, RelationshipEntry } from '../types';
 import { SHOW_ALL_TABLES, SHOW_ALL_DATABASES, SHOW_ALL_RELATIONSHIPS } from './schema';
 
 require('dotenv').config(); // Load environment variables from .env
