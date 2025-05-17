@@ -1,12 +1,9 @@
 
 import 'dotenv/config';
 import { DataUploadForm } from "@/components/data-upload-form";
-//import { pool } from "@/services/db/client";
+import { pool } from "@/services/db/schemas/route";
 import { DataPreviewSection } from "@/components/data-preview-section";
-import { getAllData, getAllRelationships, getAllPostgresItems } from "@/services/db/data-actions";
-
-
-
+//import { getAllData, getAllRelationships, getAllPostgresItems } from "@/services/db/data-actions";
 import type { DataEntry, RelationshipEntry } from "@/services/types"; // Import types
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";

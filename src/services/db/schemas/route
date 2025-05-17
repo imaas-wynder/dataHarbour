@@ -1,5 +1,5 @@
 import express, { Request, Response } from 'express';
-import { getAllItems } from './data/itemRepository'; // Adjust the path as needed
+//import { getAllItems } from './data/itemRepository'; // Adjust the path as needed
 
 const app = express();
 const port = 3000;
