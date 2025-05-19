@@ -29,7 +29,7 @@
           "src/app/page.tsx" "READ.md"
         ];
         setup = ''
-        initdb -D local
+        initdb -d localhost
         psql --dbname=postgres -c "ALTER USER \"user\" PASSWORD 'harbor';"
         psql --dbname=postgres -c "CREATE DATABASE dharbour;"
         psql --dbname=dharbour -f create.sql

@@ -1,4 +1,4 @@
-import { pool, getClient } from '../db'; // Adjust the path as needed
+import { pool, getClient } from "../services/db/dbconnect" // Adjust the path as needed
 import { QueryResult } from 'pg';
 
 // Define an interface for the data you expect from the database

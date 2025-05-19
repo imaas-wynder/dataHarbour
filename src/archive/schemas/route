@@ -19,3 +19,4 @@ app.get('/items', async (req: Request, res: Response) => {
 app.listen(port, () => {
   console.log(`Server listening on port ${port}`);
 });
+export const

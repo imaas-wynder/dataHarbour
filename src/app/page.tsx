@@ -1,9 +1,8 @@
 
 import 'dotenv/config';
 import { DataUploadForm } from "@/components/data-upload-form";
-import { pool } from "@/services/db/schemas/route";
+import { pool, getClient } from "@/services/db/dbconnect";
 import { DataPreviewSection } from "@/components/data-preview-section";
-//import { getAllData, getAllRelationships, getAllPostgresItems } from "@/services/db/data-actions";
 import type { DataEntry, RelationshipEntry } from "@/services/types"; // Import types
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
@@ -20,8 +19,8 @@ export default async function Home() {
   let databases: any[] = [];
   
   try {
-      const client = await pool().connect();
-      client.release();
+      const getClient = await import("@/services/db/dbconnect");
+      const { DataEntry, RelationsEntry } = await import("@/services/types");
     
     
     const [allData, postgresItems] = await Promise.all([

@@ -1,8 +1,17 @@
 import { QueryResult, QueryResultRow } from 'pg';
 import { v4 as uuidv4 } from 'uuid';
-import { getPool } from './client';
+import { DataEntry, RelationshipEntry } from '../types';
 import { SHOW_ALL_TABLES, SHOW_ALL_DATABASES, SHOW_ALL_RELATIONSHIPS } from './schema';
 
+require('dotenv').config(); // Load environment variables from .env
+
+const DATABASE_HOST = process.env.DATABASE_HOST
+const DATABASE_PORT = process.env.DATABASE_PORT
+const DATABASE_USER = process.env.DATABASE_USER
+const DATABASE_PASSWORD = process.env.DATABASE_PASSWORD
+const DATABASE_NAME = process.env.DATABASE_NAME
+
+console.log("Database URL:", DATABASE_HOST, DATABASE_USER);
 
 export type DataEntry = any
 export async function addData({ data }: { data: DataEntry | DataEntry[]; }): Promise<boolean> {
@@ -10,8 +19,8 @@ export async function addData({ data }: { data: DataEntry | DataEntry[]; }): Pro
     if (!currentActiveDataset) {
         return false;
     }
-
-    const client = getPool();
+    const entriesToAdd = Array.isArray(data) ? data : [data];
+    const client = await pool.connect();
    try {
         await client.query('BEGIN');
 
@@ -38,13 +47,14 @@ export async function addData({ data }: { data: DataEntry | DataEntry[]; }): Pro
 
     } catch (error) {
         await client.query('ROLLBACK');
-        console.error(error)
+        throw error;
+    } finally {
+        client.release();
     }
 }
 
 
 /**
-
  * Asynchronously fetches all data entries from the *active* dataset in PostgreSQL.
  *
  * @returns A promise that resolves to an array of DataEntry objects.
@@ -56,7 +66,7 @@ export async function getAllData(activeDatasetName: string): Promise<DataEntry[]
         console.error('No active dataset selected.');
         return []
     }
-    const client = getPool();
+    const client = await pool.connect();
     try {
         const result: QueryResult<{ entry_id: string; data: any }> = await client.query(
             'SELECT entry_id, data FROM data_entries WHERE dataset_name = $1 ORDER BY created_at DESC',
@@ -70,8 +80,10 @@ export async function getAllData(activeDatasetName: string): Promise<DataEntry[]
 
         return entries;
     } catch (error) {
-        console.error(`Failed to fetch data from database: ${error.message}`);
+        throw new Error(`Failed to fetch data from database: ${error.message}`);
     } finally {
+        console.error(`Failed to fetch data from database: ${error.message}`);
+        client.release();
     }
 }
 
@@ -90,7 +102,7 @@ export async function getDataById(activeDatasetName:string, id: number | string)
     }
     const searchId = String(id);
 
-    const client = getPool();
+    const client = await pool.connect();
     try {
         const result: QueryResult<{ entry_id: string; data: any }> = await client.query(
             'SELECT entry_id, data FROM data_entries WHERE dataset_name = $1 AND entry_id = $2',
@@ -111,6 +123,7 @@ export async function getDataById(activeDatasetName:string, id: number | string)
    } catch (error) {
     console.error(`Failed to fetch data for ID ${searchId} from database: ${error.message}`);
     } finally {
+        client.release();
     }
 }
 
@@ -133,7 +146,7 @@ export async function getDataByIds(activeDatasetName:string, ids: (number | stri
         return []; // Return empty array if no IDs are provided
     }
 
-    const client = getPool();
+    const client = await pool.connect();
     try {
         const query = `
             SELECT entry_id, data
@@ -151,6 +164,7 @@ export async function getDataByIds(activeDatasetName:string, ids: (number | stri
     } catch (error) {
         console.error(`Failed to fetch multiple data entries from database: ${error.message}`);
     } finally {
+        client.release();
     }
 }
 
@@ -173,7 +187,7 @@ export async function updateDataById(activeDatasetName:string, id: number | stri
     const dataJson = JSON.stringify(dataToUpdate);
 
 
-    const client = getPool();
+    const client = await pool.connect();
     try {
         // We update the entire JSONB column with the new data.
         // For merging/partial updates, JSONB operators could be used, but replacing is simpler here.
@@ -192,6 +206,7 @@ export async function updateDataById(activeDatasetName:string, id: number | stri
     } catch (error) {
         console.error(`Failed to update data for ID ${updateId} in database: ${error.message}`);
     } finally {
+        client.release();
     }
 }
 
@@ -221,7 +236,7 @@ export async function addRelationship(activeDatasetName:string, sourceEntryId: n
         return null;
     }
 
-    const client = getPool();
+    const client = await pool.connect();
     try {
         await client.query('BEGIN');
 
@@ -257,10 +272,11 @@ export async function addRelationship(activeDatasetName:string, sourceEntryId: n
     } catch (error) {
         await client.query('ROLLBACK');
         console.error(`Failed to add relationship ${sourceIdStr} -> ${targetIdStr} in database: ${error.message}`);
-    
+    } finally {
+        client.release();
     }
 }
- export async function getAllRelationships(): Promise<any> {
+export async function getAllRelationships(): Promise<any> {
     const client = await pool.connect();
 
     try {
@@ -270,10 +286,12 @@ export async function addRelationship(activeDatasetName:string, sourceEntryId: n
         return relationshipsResult.rows;
 
     } catch (error) {
-        console.error(error)
-    }}
+        console.error(error);
+    } finally {
+        client.release();
+    }
+}
 
- 
 export async function getAllPostgresItems(): Promise<any[]> {
     const client = await pool.connect();
     try {
@@ -282,8 +300,9 @@ export async function getAllPostgresItems(): Promise<any[]> {
         const relationshipsResult = await client.query(SHOW_ALL_RELATIONSHIPS);
         return [tablesResult, databasesResult, relationshipsResult];
     } catch (error) {
-        console.error(error)
-    
+        console.error(error);
+    } finally {
+        client.release();
     }
 }
 /**
@@ -301,7 +320,7 @@ export async function getRelationshipsBySourceId(activeDatasetName:string, sourc
     }
     const sourceIdStr = String(sourceEntryId);
 
-    const client = getPool();
+    const client = await pool.connect();
     try {
         const query = `
             SELECT id, source_entry_id, target_entry_id, created_at
@@ -313,7 +332,8 @@ export async function getRelationshipsBySourceId(activeDatasetName:string, sourc
 
         return result.rows;
     } catch (error) {
-        console.error(`Failed to fetch relationships for ID ${sourceIdStr} from database: ${error.message}`);
+        throw new Error(`Failed to fetch relationships for ID ${sourceIdStr} from database: ${error.message}`);
     }finally{
-
+        console.error(`Failed to fetch relationships for ID ${sourceIdStr} from database: ${error.message}`);
+        client.release();
     }}
