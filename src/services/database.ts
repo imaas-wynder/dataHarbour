@@ -5,6 +5,7 @@ import client from '@/services/db/client';
 //import { Pool, type QueryResult } from 'pg';
 import type { DataEntry, RelationshipEntry } from './types';
 import { v4 as uuidv4 } from 'uuid';
+import { Pool, QueryResult } from 'pg';
 
 // ========================================================================
 // ==                       PostgreSQL Implementation                    ==
@@ -281,7 +282,7 @@ export async function getAllDatasetNames(): Promise<string[]> {
     const client = await getPool().connect(); // Ensures pool is initialized and attempts connection
     try {
         const result: QueryResult<{ name: string }> = await client.query('SELECT name FROM datasets ORDER BY name');
-        const names = result.rows.map(row => row.name);
+        const names = result.rows.map((row: { name: any; }) => row.name);
         console.log(`[getAllDatasetNames Service] Returning names: [${names.join(', ')}]`);
         return names;
     } catch (error) {
@@ -435,7 +436,7 @@ export async function getAllData(): Promise<DataEntry[]> {
         );
 
         // Combine entry_id back into the data object
-        const entries = result.rows.map(row => ({
+        const entries = result.rows.map((row: { entry_id: any; data: any; }) => ({
             id: row.entry_id, // Use entry_id as the 'id' field
             ...row.data        // Spread the JSONB data
         }));

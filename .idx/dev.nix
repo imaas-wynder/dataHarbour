@@ -8,6 +8,7 @@
     pkgs.nodejs_20
     pkgs.postgresql   
     pkgs.devbox
+    pkgs.sudo
   ];
   # Sets environment variables in the workspace
   env = {
