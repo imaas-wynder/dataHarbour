@@ -11,7 +11,7 @@
   ];
   # Sets environment variables in the workspace
   env = {
-    POSTGRESQL_CONN_STRING = "postgresql://user:harbor@localhost:5432/dharbour?sslmode=disable";
+    POSTGRESQL_CONN_STRING = "postgresql://user:dataharbour@localhost:5432/dataharbor_db?sslmode=disable";
   };
   services.postgres = { enable = true;};
 
@@ -30,8 +30,8 @@
         ];
         setup = ''
         initdb -d localhost
-        psql --dbname=postgres -c "ALTER USER \"user\" PASSWORD 'harbor';"
-        psql --dbname=postgres -c "CREATE DATABASE dharbour;"
+        psql --dbname=postgres -c "ALTER USER \"Dataharbour\" PASSWORD 'd&h$_628';"
+        psql --dbname=postgres -c "CREATE DATABASE dataharbor_db;"
         psql --dbname=dharbour -f create.sql
         psql --dbname=dharbour -f upload.sql
         '';
