@@ -21,7 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { setActiveDatasetAction } from "@/actions/data-actions";
+import { setActiveDatasetAction } from "@/archive/actions/data-actions"; // Updated import path
 // Removed DataVisualization import
 
 
@@ -325,3 +325,4 @@ export function DataPreviewSection({
     </Card>
   );
 }
+

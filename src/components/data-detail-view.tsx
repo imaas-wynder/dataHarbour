@@ -12,7 +12,7 @@ import {
   addRelationshipAction,
   getRelationshipsAction,
   getDataByIdsAction // Import action to fetch multiple entries
-} from '@/actions/data-actions';
+} from '@/archive/actions/data-actions'; // Updated import path
 import { Loader2, Save, Sparkles, Edit, XCircle, LinkIcon, Plus, Trash2, Columns3, CheckSquare } from 'lucide-react'; // Added Columns3, CheckSquare
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';

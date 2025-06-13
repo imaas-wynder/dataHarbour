@@ -5,7 +5,7 @@
 import { useState, useTransition, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import type { DataEntry } from "@/services/types"; // Import type
-import { uploadDataAction, updateDataAction, createNewDatasetAction } from "@/actions/data-actions"; // Use createNewDatasetAction
+import { uploadDataAction, updateDataAction, createNewDatasetAction } from "@/archive/actions/data-actions"; // Use createNewDatasetAction and updated path
 import { useToast } from "@/hooks/use-toast";
 import {
   Dialog,
