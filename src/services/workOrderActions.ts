@@ -4,6 +4,7 @@ import { getWorkOrderDetails, completeTask, createWorkOrder } from '@/services/w
 import { getPool } from '@/services/database';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
+import { verifyAuth } from '@/lib/auth';
 
 export async function fetchWorkOrderData(workOrderId: string) {
     try {
@@ -15,11 +16,14 @@ export async function fetchWorkOrderData(workOrderId: string) {
 }
 
 export async function markTaskAsComplete(taskId: string, workOrderId: string) {
-    // TODO: Integrate with your authentication system to get the actual User ID
-    const userId = 'current-user-id'; 
-    
-    await completeTask(taskId, userId);
-    revalidatePath(`/work-orders/${workOrderId}`);
+    try {
+        const userId = await verifyAuth();
+        await completeTask(taskId, userId);
+        revalidatePath(`/work-orders/${workOrderId}`);
+    } catch (error) {
+        console.error('Unauthorized attempt to mark task as complete:', error);
+        throw new Error('Unauthorized');
+    }
 }
 
 export interface Tenant {
