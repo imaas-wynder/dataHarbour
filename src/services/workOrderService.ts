@@ -40,11 +40,16 @@ export async function initializeWorkOrderSchema(): Promise<void> {
         await client.query(`
             CREATE TABLE IF NOT EXISTS work_orders (
                 id SERIAL PRIMARY KEY,
+                tenant_id UUID,
                 location VARCHAR(255) NOT NULL,
                 goal TEXT NOT NULL,
                 status VARCHAR(50) DEFAULT 'open',
                 created_at TIMESTAMP DEFAULT NOW()
             );
+        `);
+
+        await client.query(`
+            ALTER TABLE work_orders ADD COLUMN IF NOT EXISTS tenant_id UUID;
         `);
 
         await client.query(`
@@ -65,6 +70,19 @@ export async function initializeWorkOrderSchema(): Promise<void> {
         await client.query('ROLLBACK');
         console.error('Error initializing work order schema:', err);
         throw err;
+    } finally {
+        client.release();
+    }
+}
+
+export async function createWorkOrder(tenantId: string, location: string, goal: string): Promise<string> {
+    const client = await getPool().connect();
+    try {
+        const res = await client.query(
+            "INSERT INTO work_orders (tenant_id, location, goal, status) VALUES ($1, $2, $3, 'open') RETURNING id",
+            [tenantId, location, goal]
+        );
+        return res.rows[0].id.toString();
     } finally {
         client.release();
     }

@@ -113,7 +113,7 @@ export function DataDetailView({ initialData, entryId }: DataDetailViewProps) {
                         return keys;
                     }, new Set<string>());
 
-                    let headers = Array.from(allKeys);
+                    let headers = Array.from(allKeys) as string[];
                     if (headers.includes('id')) {
                         headers = ['id', ...headers.filter(h => h !== 'id')];
                     }
@@ -124,7 +124,7 @@ export function DataDetailView({ initialData, entryId }: DataDetailViewProps) {
                              return typeof firstValue !== 'object' || firstValue === null;
                         }
                         return true;
-                    });
+                    }) as string[];
                     setRelatedHeaders(simpleHeaders);
                     setTempHeaders(simpleHeaders);
 
@@ -411,7 +411,7 @@ export function DataDetailView({ initialData, entryId }: DataDetailViewProps) {
                         <Textarea
                             id="edit-data-textarea"
                             // Use displayData which includes the ID for editing context, but ID is removed before saving
-                            value={editedJsonString || JSON.stringify({ id: entryId, ...currentData }, null, 2)}
+                            value={editedJsonString || JSON.stringify({ ...currentData, id: entryId }, null, 2)}
                             onChange={handleEditChange}
                             className="min-h-[250px] font-mono text-sm"
                             disabled={isSaving}
@@ -425,7 +425,7 @@ export function DataDetailView({ initialData, entryId }: DataDetailViewProps) {
                  ) : (
                     <pre className="p-4 bg-muted rounded-md overflow-auto text-sm">
                       {/* Display data including the ID */}
-                      {JSON.stringify({ id: entryId, ...currentData }, null, 2)}
+                      {JSON.stringify({ ...currentData, id: entryId }, null, 2)}
                     </pre>
                  )}
             </CardContent>
@@ -583,9 +583,9 @@ export function DataDetailView({ initialData, entryId }: DataDetailViewProps) {
                         <TableRow key={entry.id}>
                            {relatedHeaders.map((header) => (
                                <TableCell key={`${entry.id}-${header}`} className="whitespace-nowrap max-w-[200px] truncate">
-                                    {typeof entry[header] === 'object' && entry[header] !== null
-                                     ? JSON.stringify(entry[header])
-                                     : String(entry[header] ?? '')}
+                                    {typeof entry[header as keyof typeof entry] === 'object' && entry[header as keyof typeof entry] !== null
+                                     ? JSON.stringify(entry[header as keyof typeof entry])
+                                     : String(entry[header as keyof typeof entry] ?? '')}
                                 </TableCell>
                             ))}
                            <TableCell className="text-right">
