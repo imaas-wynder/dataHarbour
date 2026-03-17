@@ -70,6 +70,19 @@ export async function initializeWorkOrderSchema(): Promise<void> {
     }
 }
 
+export async function createWorkOrder(tenantId: string, location: string, goal: string): Promise<string> {
+    const client = await getPool().connect();
+    try {
+        const res = await client.query(
+            "INSERT INTO work_orders (location, goal, status) VALUES ($1, $2, 'open') RETURNING id",
+            [location, goal]
+        );
+        return res.rows[0].id.toString();
+    } finally {
+        client.release();
+    }
+}
+
 export async function getAllTaskTemplates(): Promise<TaskTemplate[]> {
     const client = await getPool().connect();
     try {
